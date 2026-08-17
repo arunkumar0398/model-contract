@@ -92,15 +92,34 @@ cp .env.example .env.local   # apps/web or repo root as needed
 
 | Stage | State |
 |-------|-------|
-| 0 — Repository guardrails | ✅ Done (this commit) |
-| 1 — Contract core + deterministic provider | ⏳ Next |
-| 2 — Persistence + real Bright Data ingestion | — |
+| 0 — Repository guardrails | ✅ Done |
+| 1 — Contract core + deterministic provider | ✅ Done |
+| 2 — Persistence + real Bright Data ingestion | ⏳ Next |
 | 3 — Drift engine | — |
 | 4 — Quarantine + self-healing | — |
 | 5 — Semantic-change propagation | — |
 | 6 — Downstream compatibility proof | — |
 | 7 — Judge UI + release candidate | — |
 | 8 — Buffer (QA/docs/demo) | — |
+
+## Controlled demo provider
+
+The deterministic mutation harness lives at `/provider-demo/model-x` (served by
+`pnpm dev`). Pick a variant with the `variant` query parameter
+(case-insensitive, kebab-case accepted; unknown values fall back to `HEALTHY`):
+
+```text
+/provider-demo/model-x                          → HEALTHY
+/provider-demo/model-x?variant=HEALTHY          → healthy contract
+/provider-demo/model-x?variant=BROKEN_SELECTOR  → same semantics, restructured DOM
+/provider-demo/model-x?variant=CHANGED_PRICE    → input price $4 → $6
+/provider-demo/model-x?variant=MISSING_FIELD    → input-price element removed
+/provider-demo/model-x?variant=DEPRECATED       → status active → deprecated
+/provider-demo/model-x?variant=AMBIGUOUS        → input price "Contact sales"
+```
+
+Fixture definitions live in `fixtures/provider-demo/` and are shared with the
+unit tests.
 
 Deadline: **August 21, 2026 EOD IST**. See `knowledge.md` for the locked scope,
 invariants, and stage gates, and `docs/ai-usage.md` for the AI-use disclosure.

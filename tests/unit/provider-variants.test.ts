@@ -1,18 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
-  normalizeContextWindow,
   normalizePrice,
-  normalizeStatus,
   semanticHash,
   validateCandidate,
   type CandidateObservation,
-  type ModelContract,
 } from "@modelcontract/core";
-import {
-  demoVariants,
-  resolveVariantId,
-  type DemoVariant,
-} from "../../fixtures/provider-demo/shared";
+import { demoVariants, resolveVariantId } from "../../fixtures/provider-demo/shared";
+import { contractFromVariant } from "../helpers/contract-from-variant";
 
 const SOURCE = {
   url: "https://demo.example/provider-demo/model-x",
@@ -20,36 +14,6 @@ const SOURCE = {
   collectorVersion: "v1",
   observedAt: "2026-08-17T00:00:00.000Z",
 };
-
-/** Normalize a fixture variant into a full ModelContract, or null when its
- *  raw semantics cannot be safely normalized (AMBIGUOUS / MISSING_FIELD). */
-function fullyNormalizedContract(variant: DemoVariant): ModelContract | null {
-  const context = normalizeContextWindow(variant.semantics.contextWindow);
-  const status = normalizeStatus(variant.semantics.status);
-  if (!context.ok || !status.ok) return null;
-
-  const input =
-    variant.semantics.inputPrice === null ? undefined : normalizePrice(variant.semantics.inputPrice);
-  const output =
-    variant.semantics.outputPrice === null ? undefined : normalizePrice(variant.semantics.outputPrice);
-  if (variant.semantics.inputPrice !== null && input && !input.ok) return null;
-  if (variant.semantics.outputPrice !== null && output && !output.ok) return null;
-
-  return {
-    provider: "demo-ai",
-    modelId: variant.semantics.modelId,
-    status: status.value,
-    contextWindow: context.value,
-    pricing: {
-      inputPrice: input?.ok ? input.value : undefined,
-      outputPrice: output?.ok ? output.value : undefined,
-      currency: "USD",
-      unit: "per_1m_tokens",
-    },
-    source: SOURCE,
-    validation: { schemaValid: true, confidence: 0.99, warnings: [] },
-  };
-}
 
 describe("provider demo variants (fixtures)", () => {
   it("exposes all six variants with unique ids and non-empty markup", () => {
@@ -70,8 +34,8 @@ describe("provider demo variants (fixtures)", () => {
   });
 
   it("HEALTHY and BROKEN_SELECTOR have identical semantic values", () => {
-    const healthy = fullyNormalizedContract(demoVariants.HEALTHY);
-    const broken = fullyNormalizedContract(demoVariants.BROKEN_SELECTOR);
+    const healthy = contractFromVariant(demoVariants.HEALTHY);
+    const broken = contractFromVariant(demoVariants.BROKEN_SELECTOR);
     expect(healthy).not.toBeNull();
     expect(broken).not.toBeNull();
     expect(healthy!.status).toBe(broken!.status);
@@ -94,8 +58,8 @@ describe("provider demo variants (fixtures)", () => {
     expect(changed.html.replace("$6 / 1M tokens", "$4 / 1M tokens")).toBe(
       demoVariants.HEALTHY.html,
     );
-    const healthy = fullyNormalizedContract(demoVariants.HEALTHY)!;
-    const priced = fullyNormalizedContract(changed)!;
+    const healthy = contractFromVariant(demoVariants.HEALTHY)!;
+    const priced = contractFromVariant(changed)!;
     expect(healthy.pricing?.inputPrice).toBe(4);
     expect(priced.pricing?.inputPrice).toBe(6);
     expect(priced.status).toBe(healthy.status);
@@ -107,10 +71,10 @@ describe("provider demo variants (fixtures)", () => {
     const deprecated = demoVariants.DEPRECATED;
     expect(deprecated.html).toContain('id="model-status"');
     expect(deprecated.html.replace("Deprecated", "Active")).toBe(demoVariants.HEALTHY.html);
-    const contract = fullyNormalizedContract(deprecated)!;
+    const contract = contractFromVariant(deprecated)!;
     expect(contract.status).toBe("deprecated");
     expect(contract.pricing?.inputPrice).toBe(4);
-    expect(semanticHash(contract)).not.toBe(semanticHash(fullyNormalizedContract(demoVariants.HEALTHY)!));
+    expect(semanticHash(contract)).not.toBe(semanticHash(contractFromVariant(demoVariants.HEALTHY)!));
   });
 
   it("MISSING_FIELD yields a schema-invalid candidate (no silent numeric guess)", () => {
@@ -142,7 +106,7 @@ describe("provider demo variants (fixtures)", () => {
     expect(variant.html).toContain("Contact sales");
     const result = normalizePrice("Contact sales");
     expect(result.ok).toBe(false);
-    expect(fullyNormalizedContract(variant)).toBeNull();
+    expect(contractFromVariant(variant)).toBeNull();
   });
 
   it("resolveVariantId is deterministic and falls back to HEALTHY", () => {

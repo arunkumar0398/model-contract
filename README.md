@@ -15,9 +15,11 @@ Built for the WeMakeDevs × Bright Data **Into the Scrape-Verse** hackathon.
 ## What it does
 
 1. A **Bright Data Scraper Studio collector** scrapes public AI-provider
-   documentation pages.
+   documentation pages (the controlled demo provider and one real public
+   source — Anthropic Models Overview).
 2. **ModelContract** normalizes the raw extraction into a stable
-   `ModelContract` (status, context window, pricing, deprecation).
+   `ModelContract` (status, context window, pricing, deprecation) and persists
+   raw + normalized observations with full collector/run/version provenance.
 3. Each observation is classified: `NO_DRIFT`, `TRANSIENT_FAILURE`,
    `EXTRACTION_DRIFT`, `SEMANTIC_DRIFT`, or `AMBIGUOUS_DRIFT`.
 4. Broken extractions are **quarantined and repaired** with a Bright Data
@@ -35,7 +37,7 @@ packages/core   Framework-independent domain rules (normalize, validate,
 packages/brightdata  Bright Data Scraper Studio interaction
 packages/db     Prisma + PostgreSQL persistence
 packages/cli    Downstream compatibility consumer (`modelcontract check`)
-tests/          unit, integration, e2e
+tests/          unit, integration (incl. opt-in live Bright Data), e2e
 fixtures/       Controlled demo-provider mutation fixtures
 docs/           Architecture, Bright Data, demo, AI-use disclosure
 knowledge.md    Locked scope, architecture, invariants, and stage gates
@@ -45,6 +47,8 @@ knowledge.md    Locked scope, architecture, invariants, and stage gates
 
 - Node.js ≥ 20.9
 - pnpm ≥ 9 (workspace uses pnpm 11)
+- PostgreSQL (for persistence; the app reports `503` honestly when
+  `DATABASE_URL` is unset)
 
 ## Commands
 
@@ -55,12 +59,15 @@ pnpm dev              # run the Next.js app (http://localhost:3000)
 pnpm build            # production build (apps/web)
 pnpm start            # serve the production build
 
-pnpm test             # run unit + integration tests (vitest)
+pnpm db:generate      # generate the Prisma client (after install / schema change)
+pnpm db:migrate       # apply migrations to PostgreSQL (needs DATABASE_URL)
+
+pnpm test             # run unit + integration tests (vitest; live tests skip without credentials)
 pnpm test:unit        # unit tests only
 pnpm test:integration # integration tests only
 pnpm test:watch       # watch mode
 
-pnpm typecheck        # typecheck packages + tests
+pnpm typecheck        # typecheck packages + tests + web app
 pnpm lint             # ESLint (flat config)
 pnpm check            # typecheck + lint + tests in one pass
 ```
@@ -83,10 +90,34 @@ cp .env.example .env.local   # apps/web or repo root as needed
 | Variable | Purpose | Used from |
 |----------|---------|-----------|
 | `DATABASE_URL` | PostgreSQL connection string | Stage 2 |
-| `BRIGHTDATA_ACCOUNT_ID` | Bright Data account ID | Stage 2 |
-| `BRIGHTDATA_API_TOKEN` | Bright Data API token | Stage 2 |
-| `BRIGHTDATA_COLLECTOR_ID` | Collector for the controlled demo provider | Stage 2 |
-| `BRIGHTDATA_REAL_COLLECTOR_ID` | Collector for the real AI-provider source | Stage 2 |
+| `BRIGHT_DATA_API_TOKEN` | Bright Data Scraper Studio API token | Stage 2 |
+| `BRIGHT_DATA_DEMO_COLLECTOR_ID` | Collector for the controlled demo provider | Stage 2 |
+| `BRIGHT_DATA_REAL_COLLECTOR_ID` | Collector for the real AI-provider source | Stage 2 |
+
+**Never commit real credentials.** The Bright Data token exists only in
+environment variables; tests mock the HTTP boundary so CI needs no secrets.
+
+## API
+
+```text
+POST /api/observations       ingest a raw collector observation (normalize →
+                             validate → semantic hash → persist → promote contract)
+GET  /api/contracts          current contracts with provider/model provenance
+GET  /api/contracts/:id      single contract
+POST /api/demo/variant       set the controlled provider variant (DemoState)
+```
+
+Example — set the demo provider to a broken DOM under the same URL:
+
+```bash
+curl -X POST http://localhost:3000/api/demo/variant \
+  -H 'Content-Type: application/json' \
+  -d '{"variant":"BROKEN_SELECTOR"}'
+```
+
+`/provider-demo/model-x` then renders `BROKEN_SELECTOR` markup at the same
+URL — persisted `DemoState` replaces the Stage 1 `?variant=` control for the
+canonical demo path (`?variant=` still works as a fallback without a database).
 
 ## Status
 
@@ -94,7 +125,7 @@ cp .env.example .env.local   # apps/web or repo root as needed
 |-------|-------|
 | 0 — Repository guardrails | ✅ Done |
 | 1 — Contract core + deterministic provider | ✅ Done |
-| 2 — Persistence + real Bright Data ingestion | ⏳ Next |
+| 2 — Persistence + real Bright Data ingestion | 🚧 In progress (code + tests complete; live runs blocked on credentials) |
 | 3 — Drift engine | — |
 | 4 — Quarantine + self-healing | — |
 | 5 — Semantic-change propagation | — |
@@ -105,8 +136,10 @@ cp .env.example .env.local   # apps/web or repo root as needed
 ## Controlled demo provider
 
 The deterministic mutation harness lives at `/provider-demo/model-x` (served by
-`pnpm dev`). Pick a variant with the `variant` query parameter
-(case-insensitive, kebab-case accepted; unknown values fall back to `HEALTHY`):
+`pnpm dev`). Its variant is controlled by persisted `DemoState`
+(`POST /api/demo/variant`) so the **same URL** mutates underneath the scraper —
+that is what makes true extraction drift demonstrable. Without a database, the
+`variant` query parameter falls back for development:
 
 ```text
 /provider-demo/model-x                          → HEALTHY
@@ -119,7 +152,7 @@ The deterministic mutation harness lives at `/provider-demo/model-x` (served by
 ```
 
 Fixture definitions live in `fixtures/provider-demo/` and are shared with the
-unit tests.
+unit and integration tests. See `docs/brightdata.md` for the collector setup.
 
 Deadline: **August 21, 2026 EOD IST**. See `knowledge.md` for the locked scope,
 invariants, and stage gates, and `docs/ai-usage.md` for the AI-use disclosure.

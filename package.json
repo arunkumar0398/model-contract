@@ -15,8 +15,10 @@
     "test:watch": "vitest",
     "test:unit": "vitest run tests/unit",
     "test:integration": "vitest run tests/integration",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && pnpm --filter @modelcontract/web typecheck",
     "lint": "eslint .",
+    "db:generate": "pnpm --filter @modelcontract/db db:generate",
+    "db:migrate": "pnpm --filter @modelcontract/db db:migrate",
     "check": "pnpm typecheck && pnpm lint && pnpm test"
   },
   "devDependencies": {

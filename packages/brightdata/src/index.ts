@@ -1,10 +1,11 @@
-/**
- * @modelcontract/brightdata — Bright Data Scraper Studio interaction.
- *
- * Stage 0: package boundary only.
- * Stage 2+: client, collector, runs, heal, types. Uses real Bright Data
- *           API behavior from official documentation and credentials from
- *           environment variables. Never faked.
- */
-
-export {};
+export { getDataset, resolveToken, SCRAPER_STUDIO_BASE_URL, triggerCollector } from "./client";
+export { BRIGHT_DATA_ERROR_CODES, BrightDataError, brightDataErrorFromStatus, isRetryableError } from "./errors";
+export { runCollectorAndWait } from "./runs";
+export type {
+  CollectorRunResult,
+  DatasetState,
+  PollOptions,
+  ScraperStudioOptions,
+  TriggerCollectorInput,
+  TriggerCollectorResult,
+} from "./types";

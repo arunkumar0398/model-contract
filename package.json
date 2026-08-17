@@ -1,0 +1,35 @@
+{
+  "name": "modelcontract",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.20.0",
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @modelcontract/web dev",
+    "build": "pnpm --filter @modelcontract/web build",
+    "start": "pnpm --filter @modelcontract/web start",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint .",
+    "check": "pnpm typecheck && pnpm lint && pnpm test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@modelcontract/brightdata": "workspace:*",
+    "@modelcontract/cli": "workspace:*",
+    "@modelcontract/core": "workspace:*",
+    "@modelcontract/db": "workspace:*",
+    "@types/node": "^22.15.0",
+    "eslint": "^9.39.5",
+    "globals": "^16.3.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.67.0",
+    "vitest": "^4.1.10"
+  }
+}

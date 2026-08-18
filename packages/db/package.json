@@ -9,9 +9,16 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "postinstall": "prisma generate",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate deploy"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3"
   },
   "devDependencies": {
+    "prisma": "^6.19.3",
     "typescript": "^5.9.3"
   }
 }

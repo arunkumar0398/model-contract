@@ -27,6 +27,18 @@ describe("normalizeContextWindow", () => {
     expect(normalizeContextWindow("12.8k")).toEqual({ ok: true, value: 12800 });
   });
 
+  it("handles '1M tokens' format (Anthropic) to 1000000", () => {
+    expect(normalizeContextWindow("1M tokens")).toEqual({ ok: true, value: 1000000 });
+  });
+
+  it("handles '1M' format to 1000000", () => {
+    expect(normalizeContextWindow("1M")).toEqual({ ok: true, value: 1000000 });
+  });
+
+  it("handles '200k tokens' format (Anthropic) to 200000", () => {
+    expect(normalizeContextWindow("200k tokens")).toEqual({ ok: true, value: 200000 });
+  });
+
   it("rejects values it cannot safely normalize", () => {
     for (const bad of ["", "unknown", "~128k", "128k-256k", "128 MB", "-128k", "0", "0k"]) {
       expect(normalizeContextWindow(bad).ok, `expected ${JSON.stringify(bad)} to fail`).toBe(false);
@@ -49,6 +61,22 @@ describe("normalizePrice", () => {
 
   it('normalizes "$12 / 1M tokens" to 12', () => {
     expect(normalizePrice("$12 / 1M tokens")).toEqual({ ok: true, value: 12 });
+  });
+
+  it('normalizes "$10 / input MTok" to 10 (Anthropic format)', () => {
+    expect(normalizePrice("$10 / input MTok")).toEqual({ ok: true, value: 10 });
+  });
+
+  it('normalizes "$50 / output MTok" to 50 (Anthropic format)', () => {
+    expect(normalizePrice("$50 / output MTok")).toEqual({ ok: true, value: 50 });
+  });
+
+  it('normalizes "$5 / MTok" to 5 (Anthropic format)', () => {
+    expect(normalizePrice("$5 / MTok")).toEqual({ ok: true, value: 5 });
+  });
+
+  it('normalizes "$5 per million tokens" to 5', () => {
+    expect(normalizePrice("$5 per million tokens")).toEqual({ ok: true, value: 5 });
   });
 
   it('normalizes "$0" to 0 without fabricating', () => {

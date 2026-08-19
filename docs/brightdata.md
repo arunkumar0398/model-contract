@@ -72,14 +72,36 @@ a token). The repo never contains fake collector IDs or fake run results.
 ### 2. Real public source collector (`BRIGHT_DATA_REAL_COLLECTOR_ID`)
 
 - **Source:** Anthropic public Models Overview
-  (`https://docs.anthropic.com/en/docs/about-claude/models/overview`) —
-  publicly accessible, no login, no paywall (verified HTTP 200, 2026-08-17).
+  (`https://platform.claude.com/docs/en/about-claude/models/overview`) —
+  publicly accessible, no login, no paywall (verified HTTP 200, 2026-08-19).
 - **Input schema:** single field `url` (string).
 - **Output fields (per model row):** `provider` ("anthropic"), `modelId`,
   `status`, `contextWindow`, `inputPrice`, `outputPrice`, `deprecationDate`
   (optional), `sourceUrl`.
+- `modelId` must use the machine-readable Claude API ID from the page
+  (e.g. `claude-fable-5`), **not** the display name (e.g. `Claude Fable 5`).
+- `status`: for records extracted from the "Latest models comparison" table,
+  output `active`. Do not infer status for legacy/deprecation sections.
 - Extract only the model overview table; keep output raw (strings). Normalization
   is owned by `packages/core`, never by the collector.
+
+**First live acceptance model:** Claude Fable 5 (`claude-fable-5`).
+Claude Sonnet 5 is excluded from the first acceptance path because its current
+documentation contains time-limited introductory pricing, which is unnecessary
+ambiguity for this gate.
+
+Expected raw output for Claude Fable 5 (raw strings, not normalized):
+```json
+{
+  "provider": "anthropic",
+  "modelId": "claude-fable-5",
+  "status": "active",
+  "contextWindow": "1M tokens",
+  "inputPrice": "$10 / input MTok",
+  "outputPrice": "$50 / output MTok",
+  "sourceUrl": "https://platform.claude.com/docs/en/about-claude/models/overview"
+}
+```
 
 ## Environment
 

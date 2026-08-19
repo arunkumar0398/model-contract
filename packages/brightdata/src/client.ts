@@ -138,6 +138,16 @@ export async function getDataset(runId: string, opts: ScraperStudioOptions = {})
     if (obj.status === "ready" && Array.isArray(obj.rows)) {
       return { status: "ready", rows: obj.rows as Array<Record<string, unknown>> };
     }
+
+    // Single-object response: a scraped row returned directly (not wrapped
+    // in an array or {status,rows} envelope). Known Bright Data envelope
+    // status values: ready, running, queued, processing, collecting,
+    // failed, error. Also treat as envelope if message/reason is present.
+    const envelopeStatuses = new Set(["ready", "running", "queued", "processing", "collecting", "failed", "error"]);
+    const hasEnvelopeIndicator = "message" in obj || "reason" in obj;
+    if (!envelopeStatuses.has(obj.status as string) && !hasEnvelopeIndicator) {
+      return { status: "ready", rows: [data as Record<string, unknown>] };
+    }
   }
 
   // Any other shape (running/queued/processing, or unknown) — keep polling.

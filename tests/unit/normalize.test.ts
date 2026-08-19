@@ -39,10 +39,31 @@ describe("normalizeContextWindow", () => {
     expect(normalizeContextWindow("200k tokens")).toEqual({ ok: true, value: 200000 });
   });
 
+  it("strips trailing Private Use Area junk (\uE08F) from Anthropic scraper output", () => {
+    expect(normalizeContextWindow("1M tokens \uE08F")).toEqual({ ok: true, value: 1000000 });
+  });
+
+  it("strips control characters but preserves meaningful Unicode", () => {
+    // Euro sign is meaningful — should NOT be stripped to make parsing pass
+    expect(normalizeContextWindow("128k €").ok).toBe(false);
+    // Control chars and PUA should be stripped
+    expect(normalizeContextWindow("128k\u0000")).toEqual({ ok: true, value: 128000 });
+    expect(normalizeContextWindow("128k\uE000")).toEqual({ ok: true, value: 128000 });
+  });
+
   it("rejects values it cannot safely normalize", () => {
     for (const bad of ["", "unknown", "~128k", "128k-256k", "128 MB", "-128k", "0", "0k"]) {
       expect(normalizeContextWindow(bad).ok, `expected ${JSON.stringify(bad)} to fail`).toBe(false);
     }
+  });
+
+  it("does NOT strip meaningful non-ASCII to fabricate valid data", () => {
+    // € is U+20AC (Symbol category) — must NOT be silently stripped
+    expect(normalizeContextWindow("1M tokens €").ok).toBe(false);
+    // ¥ is U+00A5 (Symbol category) — must NOT be silently stripped
+    expect(normalizeContextWindow("128k ¥").ok).toBe(false);
+    // accented letters are meaningful — must NOT be stripped
+    expect(normalizeContextWindow("128k über").ok).toBe(false);
   });
 });
 

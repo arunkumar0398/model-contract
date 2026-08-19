@@ -119,6 +119,32 @@ describe("getDataset", () => {
     if (state.status === "ready") expect(state.rows).toHaveLength(1);
   });
 
+  it("accepts a bare scraped object (single-item response) as dataset data", async () => {
+    const row = { provider: "anthropic", modelId: "claude-fable-5", status: "active", contextWindow: "1M tokens" };
+    const { fn } = fetchMock(async () => row);
+    const state = await getDataset("j_1", { ...OPTS, fetchImpl: fn });
+    expect(state.status).toBe("ready");
+    if (state.status === "ready") {
+      expect(state.rows).toHaveLength(1);
+      expect(state.rows[0]!).toEqual(row);
+    }
+  });
+
+  it("recognizes a {status: 'ready', rows: [...]} envelope", async () => {
+    const { fn } = fetchMock(async () => ({ status: "ready", rows: [{ model: "x" }] }));
+    const state = await getDataset("j_1", { ...OPTS, fetchImpl: fn });
+    expect(state.status).toBe("ready");
+    if (state.status === "ready") expect(state.rows).toHaveLength(1);
+  });
+
+  it("does NOT mistake scraped data with status:'active' for an API envelope", async () => {
+    const row = { provider: "anthropic", modelId: "claude-sonnet", status: "active", inputPrice: "$3" };
+    const { fn } = fetchMock(async () => row);
+    const state = await getDataset("j_1", { ...OPTS, fetchImpl: fn });
+    expect(state.status).toBe("ready");
+    if (state.status === "ready") expect(state.rows[0]!.modelId).toBe("claude-sonnet");
+  });
+
   it("treats a 404 as still running while the collection is in progress", async () => {
     const { fn } = fetchMock(async () => jsonResponse(404, {}));
     const state = await getDataset("j_1", { ...OPTS, fetchImpl: fn });
@@ -127,6 +153,18 @@ describe("getDataset", () => {
 
   it("surfaces an explicit failed status", async () => {
     const { fn } = fetchMock(async () => ({ status: "failed", reason: "page blocked" }));
+    const state = await getDataset("j_1", { ...OPTS, fetchImpl: fn });
+    expect(state.status).toBe("failed");
+  });
+
+  it("treats a {status:'collecting', message:'...'} as running", async () => {
+    const { fn } = fetchMock(async () => ({ status: "collecting", message: "Job is not finished" }));
+    const state = await getDataset("j_1", { ...OPTS, fetchImpl: fn });
+    expect(state.status).toBe("running");
+  });
+
+  it("treats a {status:'error', reason:'...'} as failed", async () => {
+    const { fn } = fetchMock(async () => ({ status: "error", reason: "timeout" }));
     const state = await getDataset("j_1", { ...OPTS, fetchImpl: fn });
     expect(state.status).toBe("failed");
   });

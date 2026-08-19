@@ -23,7 +23,10 @@ const PLAIN_CONTEXT = /^(\d+(?:\.\d+)?)(?:\s*tokens?)?$/i;
 /** "128k" → 128000, "128,000 tokens" → 128000. Rejects anything ambiguous. */
 export function normalizeContextWindow(input: unknown): NormalizeResult<number> {
   if (typeof input !== "string") return fail("context window must be a string");
-  const trimmed = input.trim();
+  // Strip control characters (\p{Cc}: C0/C1/DEL) and Private Use Area
+  // characters (\p{Co}: U+E000–U+F8FF) that scrapers sometimes inject.
+  // Meaningful Unicode like €, ¥, or accented letters is preserved.
+  const trimmed = input.trim().replace(/[\p{Cc}\p{Co}]/gu, "").trim();
   if (trimmed === "") return fail("context window is empty");
 
   const kMatch = K_FORM.exec(trimmed);

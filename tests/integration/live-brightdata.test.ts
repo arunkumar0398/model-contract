@@ -84,7 +84,7 @@ describe.runIf(live)("live Bright Data ingestion (opt-in)", () => {
       const { runId, rows } = await runCollectorAndWait(
         {
           collectorId,
-          inputs: [{ url: "https://docs.anthropic.com/en/docs/about-claude/models/overview" }],
+          inputs: [{ url: "https://platform.claude.com/docs/en/about-claude/models/overview" }],
         },
         { maxAttempts: 30, pollIntervalMs: 5000 },
       );
@@ -101,7 +101,7 @@ describe.runIf(live)("live Bright Data ingestion (opt-in)", () => {
           inputPrice: row.inputPrice,
           outputPrice: row.outputPrice,
           deprecationDate: row.deprecationDate,
-          sourceUrl: row.sourceUrl ?? "https://docs.anthropic.com/en/docs/about-claude/models/overview",
+          sourceUrl: row.sourceUrl ?? "https://platform.claude.com/docs/en/about-claude/models/overview",
           collectorId,
           collectorVersion: "v1",
           runId,

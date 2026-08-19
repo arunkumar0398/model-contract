@@ -16,7 +16,8 @@ function fail(reason: string): NormalizeResult<never> {
   return { ok: false, reason };
 }
 
-const K_FORM = /^(\d+(?:\.\d+)?)\s*k$/i;
+const K_FORM = /^(\d+(?:\.\d+)?)\s*k(?:\s*tokens?)?$/i;
+const M_FORM = /^(\d+(?:\.\d+)?)\s*M(?:illion)?(?:\s*tokens?)?$/i;
 const PLAIN_CONTEXT = /^(\d+(?:\.\d+)?)(?:\s*tokens?)?$/i;
 
 /** "128k" → 128000, "128,000 tokens" → 128000. Rejects anything ambiguous. */
@@ -30,6 +31,15 @@ export function normalizeContextWindow(input: unknown): NormalizeResult<number> 
     // Round to avoid cross-engine float artifacts (e.g. 12.8 * 1000);
     // context windows are integers by definition.
     const value = Math.round(Number.parseFloat(kMatch[1]!) * 1000);
+    if (!Number.isFinite(value) || value <= 0) {
+      return fail(`cannot safely normalize context window from ${JSON.stringify(input)}`);
+    }
+    return ok(value);
+  }
+
+  const mMatch = M_FORM.exec(trimmed);
+  if (mMatch) {
+    const value = Math.round(Number.parseFloat(mMatch[1]!) * 1_000_000);
     if (!Number.isFinite(value) || value <= 0) {
       return fail(`cannot safely normalize context window from ${JSON.stringify(input)}`);
     }
@@ -50,7 +60,9 @@ export function normalizeContextWindow(input: unknown): NormalizeResult<number> 
 
 const PLAIN_PRICE = /^\$?\s*(\d+(?:\.\d+)?)\s*$/;
 const PER_M_TOKENS =
-  /^\$?\s*(\d+(?:\.\d+)?)\s*(?:\/\s*|\s*per\s+|\s+)?1\s?m(?:illion)?\s*tokens?\s*$/i;
+  /^\$?\s*(\d+(?:\.\d+)?)\s*(?:\/\s*|\s*per\s+|\s+)?1?\s?m(?:illion)?\s*tokens?\s*$/i;
+const MTOK_PRICE =
+  /^\$?\s*(\d+(?:\.\d+)?)\s*\/\s*(?:input|output)?\s*MTok\s*$/i;
 
 /**
  * "$4" → 4, "$4.00" → 4, "$4 / 1M tokens" → 4.
@@ -70,6 +82,11 @@ export function normalizePrice(input: unknown): NormalizeResult<number> {
   const perM = PER_M_TOKENS.exec(trimmed);
   if (perM) {
     return ok(Number.parseFloat(perM[1]!));
+  }
+
+  const mtok = MTOK_PRICE.exec(trimmed);
+  if (mtok) {
+    return ok(Number.parseFloat(mtok[1]!));
   }
 
   return fail(`cannot safely normalize price from ${JSON.stringify(input)}`);

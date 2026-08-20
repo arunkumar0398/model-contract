@@ -9,8 +9,8 @@ const nextId = () => `fake_${++counter}`;
 /**
  * In-memory PrismaClient stand-in implementing exactly the delegate methods
  * the application uses (provider/model/contract/observation/
- * collectorVersion/demoState). Normal CI runs against this; opt-in live runs
- * use the real PrismaClient + PostgreSQL.
+ * collectorVersion/demoState/driftEvent). Normal CI runs against this; opt-in
+ * live runs use the real PrismaClient + PostgreSQL.
  */
 export function createFakeDb() {
   const providers = new Map<string, Json>();
@@ -19,6 +19,7 @@ export function createFakeDb() {
   const collectorVersions = new Map<string, Json>();
   const demoStates = new Map<string, Json>();
   const observations: Json[] = [];
+  const driftEvents: Json[] = [];
 
   const db = {
     provider: {
@@ -49,14 +50,24 @@ export function createFakeDb() {
     contract: {
       upsert: vi.fn(async (args: { where: { modelId: string }; create: Json; update: Json }) => {
         const existing = contracts.get(args.where.modelId);
-        if (existing) return { ...existing, ...args.update };
+        if (existing) {
+          const updated = { ...existing, ...args.update };
+          contracts.set(args.where.modelId, updated);
+          return updated;
+        }
         const row = { id: nextId(), createdAt: new Date(), ...args.create };
         contracts.set(args.where.modelId, row);
         return row;
       }),
       findMany: vi.fn(async () => [...contracts.values()]),
-      findUnique: vi.fn(async (args: { where: { id: string } }) => {
-        for (const c of contracts.values()) if (c.id === args.where.id) return c;
+      findUnique: vi.fn(async (args: { where: { id: string } | { modelId: string } }) => {
+        const w = args.where as Record<string, string>;
+        if (w.id) {
+          for (const c of contracts.values()) if (c.id === w.id) return c;
+        }
+        if (w.modelId) {
+          return contracts.get(w.modelId) ?? null;
+        }
         return null;
       }),
     },
@@ -83,6 +94,18 @@ export function createFakeDb() {
         },
       ),
     },
+    driftEvent: {
+      create: vi.fn(async (args: { data: Json }) => {
+        const row = { id: nextId(), createdAt: new Date(), ...args.data };
+        driftEvents.push(row);
+        return row;
+      }),
+      findMany: vi.fn(async () => [...driftEvents]),
+      findUnique: vi.fn(async (args: { where: { id: string } }) => {
+        for (const e of driftEvents) if (e.id === args.where.id) return e;
+        return null;
+      }),
+    },
     demoState: {
       upsert: vi.fn(async (args: { where: { id: string }; create: Json; update: Json }) => {
         const existing = demoStates.get(args.where.id);
@@ -97,6 +120,24 @@ export function createFakeDb() {
       }),
       findUnique: vi.fn(async (args: { where: { id: string } }) => demoStates.get(args.where.id) ?? null),
     },
+    $transaction: vi.fn(async (fn: (tx: typeof db) => Promise<unknown>) => {
+      // Snapshot mutable stores before callback
+      const snapObs = [...observations];
+      const snapContracts = new Map(contracts);
+      const snapDrift = [...driftEvents];
+      try {
+        return await fn(db);
+      } catch (err) {
+        // Restore on failure — simulates transaction rollback
+        observations.length = 0;
+        observations.push(...snapObs);
+        contracts.clear();
+        for (const [k, v] of snapContracts) contracts.set(k, v);
+        driftEvents.length = 0;
+        driftEvents.push(...snapDrift);
+        throw err;
+      }
+    }),
   };
 
   return {
@@ -104,9 +145,14 @@ export function createFakeDb() {
     /** Test accessors. */
     __observations: observations,
     __contracts: contracts,
+    __driftEvents: driftEvents,
   } as unknown as FakeDb;
 }
 
-export type FakeDb = PrismaClient & { __observations: Json[]; __contracts: Map<string, Json> };
+export type FakeDb = PrismaClient & {
+  __observations: Json[];
+  __contracts: Map<string, Json>;
+  __driftEvents: Json[];
+};
 
 export type { PrismaClient };

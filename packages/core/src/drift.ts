@@ -5,6 +5,15 @@ export type DriftType =
   | "SEMANTIC_DRIFT"
   | "AMBIGUOUS_DRIFT";
 
+export type ReasonCode =
+  | "BASELINE_ESTABLISHED"
+  | "SEMANTIC_HASH_UNCHANGED"
+  | "SEMANTIC_FIELD_CHANGED"
+  | "REQUIRED_FIELD_MISSING"
+  | "UNSAFE_VALUE"
+  | "COLLECTION_FAILED"
+  | "EXTRACTION_VALIDATION_FAILED";
+
 export type HealthState =
   | "HEALTHY"
   | "SUSPECT"

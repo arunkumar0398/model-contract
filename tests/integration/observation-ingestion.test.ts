@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it, vi } from "vitest";
 import { normalizeContextWindow, normalizePrice, normalizeStatus, semanticHash } from "@modelcontract/core";
 import { ingestObservation, type RawObservation } from "../../apps/web/lib/ingest";
@@ -145,5 +146,113 @@ describe("ingestObservation", () => {
     expect(normalizeStatus("Active")).toEqual({ ok: true, value: "active" });
     expect(normalizePrice("$4 / 1M tokens")).toEqual({ ok: true, value: 4 });
     expect(normalizeContextWindow("128k")).toEqual({ ok: true, value: 128000 });
+  });
+
+  // --- Stage 3: classification + DriftEvent tests ---
+
+  it("persists a DriftEvent for every valid ingestion", async () => {
+    const db = createFakeDb();
+    const result = await ingestObservation(db, healthyInput());
+    expect(result.driftType).toBe("NO_DRIFT");
+    expect(result.driftEventId).toBeTruthy();
+    const events = db.__driftEvents;
+    expect(events.length).toBe(1);
+    expect(events[0]!.driftType).toBe("NO_DRIFT");
+    expect(events[0]!.observationId).toBe(result.observationId);
+  });
+
+  it("IngestResult includes driftType and driftEventId", async () => {
+    const db = createFakeDb();
+    const result = await ingestObservation(db, healthyInput());
+    expect(result).toHaveProperty("driftType");
+    expect(result).toHaveProperty("driftEventId");
+    expect(typeof result.driftType).toBe("string");
+    expect(typeof result.driftEventId).toBe("string");
+  });
+
+  it("classifies $4 -> $6 as SEMANTIC_DRIFT before promoting contract", async () => {
+    const db = createFakeDb();
+    await ingestObservation(db, healthyInput());
+    const result2 = await ingestObservation(db, healthyInput({ inputPrice: "$6 / 1M tokens" }));
+    expect(result2.driftType).toBe("SEMANTIC_DRIFT");
+    expect(result2.driftEventId).toBeTruthy();
+    const events = db.__driftEvents as any[];
+    expect(events.length).toBe(2);
+    expect(events[1].driftType).toBe("SEMANTIC_DRIFT");
+    expect(events[1].fieldDiffs).toEqual(
+      expect.arrayContaining([expect.objectContaining({ field: "pricing.inputPrice" })]),
+    );
+    // Contract should be promoted with new $6 price
+    const contract = [...db.__contracts.values()][0] as any;
+    expect(contract.inputPrice).toBe(6);
+  });
+
+  it("does NOT promote contract for AMBIGUOUS_DRIFT", async () => {
+    const db = createFakeDb();
+    await ingestObservation(db, healthyInput());
+    const result = await ingestObservation(db, healthyInput({ inputPrice: "Contact sales" }));
+    expect(result.driftType).toBe("AMBIGUOUS_DRIFT");
+    // Contract should still be $4 from first ingestion
+    const contract = [...db.__contracts.values()][0] as any;
+    expect(contract.inputPrice).toBe(4);
+  });
+
+  // --- Stage 3: HEALTHY -> HEALTHY baseline regression ---
+
+  it("second identical HEALTHY ingestion: NO_DRIFT, SEMANTIC_HASH_UNCHANGED, previousHash === currentHash", async () => {
+    const db = createFakeDb();
+    const first = await ingestObservation(db, healthyInput());
+    expect(first.driftType).toBe("NO_DRIFT");
+    const second = await ingestObservation(db, healthyInput());
+    expect(second.driftType).toBe("NO_DRIFT");
+    const events = db.__driftEvents as any[];
+    expect(events.length).toBe(2);
+    // Second event should be SEMANTIC_HASH_UNCHANGED
+    expect(events[1].reasonCodes).toContain("SEMANTIC_HASH_UNCHANGED");
+    expect(events[1].previousHash).toBe(events[1].currentHash);
+  });
+
+  // --- Stage 3: previous contract identity ---
+
+  it("previous contract has correct provider and modelId (not empty strings)", async () => {
+    const db = createFakeDb();
+    await ingestObservation(db, healthyInput());
+    await ingestObservation(db, healthyInput({ inputPrice: "$6 / 1M tokens" }));
+    const events = db.__driftEvents as any[];
+    const semanticEvent = events[1];
+    expect(semanticEvent.previousHash).toBeTruthy();
+    expect(semanticEvent.currentHash).toBeTruthy();
+    // previousHash must match the $4 contract hash, not an empty-identity hash
+    expect(semanticEvent.previousHash).not.toBe(semanticEvent.currentHash);
+  });
+
+  // --- Stage 3: transaction rollback ---
+
+  it("transaction failure preserves previous state", async () => {
+    const db = createFakeDb();
+    await ingestObservation(db, healthyInput()); // baseline $4
+    const contractBefore = [...db.__contracts.values()][0] as any;
+    expect(contractBefore.inputPrice).toBe(4);
+
+    // Force failure: make driftEvent.create throw
+    const originalCreate = db.driftEvent.create;
+    (db as any).driftEvent.create = vi.fn(async () => {
+      throw new Error("simulated driftEvent failure");
+    });
+
+    await expect(
+      ingestObservation(db, healthyInput({ inputPrice: "$6 / 1M tokens" })),
+    ).rejects.toThrow("simulated driftEvent failure");
+
+    // Restore original mock
+    (db as any).driftEvent.create = originalCreate;
+
+    // Contract unchanged — still $4
+    const contractAfter = [...db.__contracts.values()][0] as any;
+    expect(contractAfter.inputPrice).toBe(4);
+    // No new DriftEvent persisted
+    expect(db.__driftEvents.length).toBe(1);
+    // No new Observation persisted
+    expect(db.__observations.length).toBe(1);
   });
 });

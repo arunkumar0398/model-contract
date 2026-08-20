@@ -50,7 +50,11 @@ export function createFakeDb() {
     contract: {
       upsert: vi.fn(async (args: { where: { modelId: string }; create: Json; update: Json }) => {
         const existing = contracts.get(args.where.modelId);
-        if (existing) return { ...existing, ...args.update };
+        if (existing) {
+          const updated = { ...existing, ...args.update };
+          contracts.set(args.where.modelId, updated);
+          return updated;
+        }
         const row = { id: nextId(), createdAt: new Date(), ...args.create };
         contracts.set(args.where.modelId, row);
         return row;

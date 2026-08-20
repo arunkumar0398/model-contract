@@ -7,7 +7,10 @@ import { semanticDiff } from "./semantic-diff";
 
 /** Compute semantic hash from CandidateObservation (no validation field needed). */
 function candidateHash(c: CandidateObservation): string {
-  return semanticHashOf(extractSemanticFields(c as any));
+  // CandidateObservation has the same semantic fields as ModelContract
+  // (provider, modelId, status, contextWindow, pricing, deprecationDate).
+  // The validation field is not used by extractSemanticFields.
+  return semanticHashOf(extractSemanticFields(c as unknown as ModelContract));
 }
 
 export type ObservationEvidence = {
@@ -149,7 +152,7 @@ export function classifyDrift(input: DriftInput): DriftDecision {
   }
 
   const previousFields = extractSemanticFields(previousContract);
-  const currentFields = extractSemanticFields(candidate as any);
+  const currentFields = extractSemanticFields(candidate as unknown as ModelContract);
 
   // Step 6: same semantic hash
   if (previousHash === currentHash) {

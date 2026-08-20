@@ -6,7 +6,6 @@ import {
   normalizeStatus,
   semanticHash,
   validateCandidate,
-  extractSemanticFields,
   classifyDrift,
   type CandidateObservation,
   type ModelContract,
@@ -54,6 +53,21 @@ export type IngestDb = Pick<
   PrismaClient,
   "provider" | "model" | "contract" | "observation" | "collectorVersion" | "driftEvent" | "$transaction"
 >;
+
+type ContractRow = {
+  status: string;
+  contextWindow?: number | null;
+  inputPrice?: number | null;
+  outputPrice?: number | null;
+  currency: string;
+  pricingUnit: string;
+  deprecationDate?: string | null;
+  sourceUrl: string;
+  collectorId: string;
+  collectorVersion: string;
+  observedAt: string;
+  id?: string;
+};
 
 function nonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim() !== "";
@@ -229,7 +243,7 @@ export async function ingestObservation(db: IngestDb, raw: RawObservation): Prom
       where: { modelId: modelRow.id },
     });
     const previousContract = previousRow
-      ? contractRowToModelContract(previousRow as any, provider, modelId)
+      ? contractRowToModelContract(previousRow as ContractRow, provider, modelId)
       : null;
 
     // Persist observation
@@ -266,7 +280,7 @@ export async function ingestObservation(db: IngestDb, raw: RawObservation): Prom
         driftType: decision.driftType,
         reasonCodes: decision.reasonCodes,
         explanations: decision.explanations,
-        fieldDiffs: decision.fieldDiffs as any,
+        fieldDiffs: decision.fieldDiffs as any, // eslint-disable-line @typescript-eslint/no-explicit-any
         previousHash: decision.previousHash,
         currentHash: decision.currentHash,
       },
@@ -385,7 +399,7 @@ export async function recordCollectionFailure(
       where: { modelId: modelRow.id },
     });
     const previousContract = previousRow
-      ? contractRowToModelContract(previousRow as any, input.provider, input.modelId)
+      ? contractRowToModelContract(previousRow as ContractRow, input.provider, input.modelId)
       : null;
 
     const decision = classifyDrift({
@@ -409,7 +423,7 @@ export async function recordCollectionFailure(
         driftType: decision.driftType,
         reasonCodes: decision.reasonCodes,
         explanations: decision.explanations,
-        fieldDiffs: decision.fieldDiffs as any,
+        fieldDiffs: decision.fieldDiffs as any, // eslint-disable-line @typescript-eslint/no-explicit-any
         previousHash: decision.previousHash,
         currentHash: decision.currentHash,
       },

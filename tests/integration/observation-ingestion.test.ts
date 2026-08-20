@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it, vi } from "vitest";
 import { normalizeContextWindow, normalizePrice, normalizeStatus, semanticHash } from "@modelcontract/core";
 import { ingestObservation, type RawObservation } from "../../apps/web/lib/ingest";
@@ -235,7 +236,7 @@ describe("ingestObservation", () => {
 
     // Force failure: make driftEvent.create throw
     const originalCreate = db.driftEvent.create;
-    (db as any).driftEvent.create = vi.fn(async (...args: any[]) => {
+    (db as any).driftEvent.create = vi.fn(async () => {
       throw new Error("simulated driftEvent failure");
     });
 

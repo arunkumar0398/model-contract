@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { describe, expect, it } from "vitest";
 import { createFakeDb } from "../helpers/fake-prisma";
 
 describe("fake-prisma $transaction rollback", () => {
@@ -16,12 +17,12 @@ describe("fake-prisma $transaction rollback", () => {
       create: { providerId: "p1", modelId: "model-x", displayName: "model-x" },
       update: {},
     });
-    const contract = await db.contract.upsert({
+    await db.contract.upsert({
       where: { modelId: "m1" },
       create: { modelId: "m1", status: "active", inputPrice: 4, semanticHash: "abc", sourceUrl: "u", collectorId: "c1", collectorVersion: "v1", observedAt: "2026-01-01" },
       update: {},
     });
-    const obs = await db.observation.create({
+    await db.observation.create({
       data: { modelId: "m1", rawPayload: {}, schemaValid: true, validationErrors: [], validationWarnings: [], collectorId: "c1", sourceUrl: "u", observedAt: "2026-01-01" },
     });
 

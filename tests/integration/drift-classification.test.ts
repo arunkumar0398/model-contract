@@ -1,6 +1,6 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it } from "vitest";
 import { classifyDrift } from "../../packages/core/src/classify-drift";
-import { extractSemanticFields, semanticHash } from "../../packages/core/src/semantic-hash";
 import { demoVariants } from "../../fixtures/provider-demo/shared";
 import { contractFromVariant } from "../helpers/contract-from-variant";
 import { createFakeDb } from "../helpers/fake-prisma";

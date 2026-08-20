@@ -1,7 +1,7 @@
-// ModelContract — Stage 2 persistence schema.
-// Six entities only: Provider, Model, Contract, Observation, CollectorVersion,
-// DemoState. DriftEvent / HealAttempt / CompatibilityCheck arrive with their
-// owning later stages (3/4/6).
+// ModelContract — Stage 3 persistence schema.
+// Seven entities: Provider, Model, Contract, Observation, CollectorVersion,
+// DemoState, DriftEvent. HealAttempt / CompatibilityCheck arrive with their
+// owning later stages (4/6).
 
 generator client {
   provider = "prisma-client-js"
@@ -29,6 +29,7 @@ model Model {
   provider    Provider      @relation(fields: [providerId], references: [id], onDelete: Cascade)
   contracts   Contract[]
   observations Observation[]
+  driftEvents  DriftEvent[]
 
   @@unique([providerId, modelId])
 }
@@ -52,6 +53,7 @@ model Contract {
   observedAt       String
   createdAt        DateTime @default(now())
   model            Model    @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  previousDriftEvents DriftEvent[] @relation("PreviousContractDriftEvents")
 
   @@unique([modelId])
 }
@@ -72,6 +74,7 @@ model Observation {
   observedAt         String
   createdAt          DateTime @default(now())
   model              Model    @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  driftEvent         DriftEvent?
 }
 
 model CollectorVersion {
@@ -87,6 +90,29 @@ model CollectorVersion {
 
 // Singleton row (id = "singleton") holding the controlled provider's current
 // demo variant, so /provider-demo/model-x mutates under a stable URL.
+model DriftEvent {
+  id                  String     @id @default(cuid())
+  modelRecordId       String
+  observationId       String?
+  previousContractId  String?
+  driftType           String
+  reasonCodes         Json
+  explanations        Json
+  fieldDiffs          Json
+  previousHash        String?
+  currentHash         String?
+  createdAt           DateTime   @default(now())
+
+  model               Model       @relation(fields: [modelRecordId], references: [id], onDelete: Cascade)
+  observation         Observation? @relation(fields: [observationId], references: [id], onDelete: SetNull)
+  previousContract    Contract?   @relation("PreviousContractDriftEvents", fields: [previousContractId], references: [id], onDelete: SetNull)
+
+  @@index([modelRecordId])
+  @@index([driftType])
+  @@index([createdAt])
+  @@unique([observationId])
+}
+
 model DemoState {
   id        String   @id
   variant   String

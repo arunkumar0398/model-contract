@@ -1,13 +1,7 @@
 import type { PrismaClient } from "@modelcontract/db";
 import {
-  normalizeContextWindow,
-  normalizeDate,
-  normalizePrice,
-  normalizeStatus,
-  semanticHash,
-  validateCandidate,
+  prepareObservation,
   classifyDrift,
-  type CandidateObservation,
   type ModelContract,
   type DriftType,
 } from "@modelcontract/core";
@@ -69,9 +63,9 @@ type ContractRow = {
   id?: string;
 };
 
-function nonEmptyString(value: unknown): value is string {
-  return typeof value === "string" && value.trim() !== "";
-}
+export type IngestContext = {
+  retryExhausted?: boolean;
+};
 
 /**
  * Convert a Prisma Contract row to a ModelContract for the classifier.
@@ -122,93 +116,23 @@ function contractRowToModelContract(
  *
  * Critical invariant: EXTRACTION_DRIFT and AMBIGUOUS_DRIFT never promote.
  */
-export async function ingestObservation(db: IngestDb, raw: RawObservation): Promise<IngestResult> {
-  const provider = nonEmptyString(raw.provider) ? raw.provider : "";
-  const modelId = nonEmptyString(raw.modelId) ? raw.modelId : "";
-  const sourceUrl = nonEmptyString(raw.sourceUrl) ? raw.sourceUrl : "";
-  const collectorId = nonEmptyString(raw.collectorId) ? raw.collectorId : "";
-  const collectorVersion = nonEmptyString(raw.collectorVersion) ? raw.collectorVersion : null;
-  const runId = nonEmptyString(raw.runId) ? raw.runId : null;
-  const observedAt = nonEmptyString(raw.observedAt) ? raw.observedAt : new Date().toISOString();
+export async function ingestObservation(db: IngestDb, raw: RawObservation, context?: IngestContext): Promise<IngestResult> {
+  const provider = typeof raw.provider === "string" ? raw.provider : "";
+  const modelId = typeof raw.modelId === "string" ? raw.modelId : "";
+  const sourceUrl = typeof raw.sourceUrl === "string" ? raw.sourceUrl : "";
+  const collectorId = typeof raw.collectorId === "string" ? raw.collectorId : "";
+  const collectorVersion = typeof raw.collectorVersion === "string" ? raw.collectorVersion : null;
+  const runId = typeof raw.runId === "string" ? raw.runId : null;
+  const observedAt = typeof raw.observedAt === "string" ? raw.observedAt : new Date().toISOString();
 
-  // --- Normalize (packages/core). Track unsafe/missing fields for classification.
-  const errors: string[] = [];
-  const warnings: string[] = [];
-  const unsafeFields: string[] = [];
-  const missingFields: string[] = [];
+  // --- Pure preparation via packages/core
+  const prepared = prepareObservation(raw);
+  const { candidate, schemaValid, unsafeFields, missingFields, errors, warnings, semanticHash: hash } = prepared;
 
-  const statusRes = normalizeStatus(raw.status);
-  if (!statusRes.ok) errors.push(`status: ${statusRes.reason}`);
-
-  const contextRes =
-    raw.contextWindow !== undefined && raw.contextWindow !== null && raw.contextWindow !== ""
-      ? normalizeContextWindow(raw.contextWindow)
-      : { ok: true as const, value: undefined };
-  if (!contextRes.ok) errors.push(`contextWindow: ${contextRes.reason}`);
-
-  // inputPrice: distinguish "present but unsafe" from "absent"
-  const inputRes =
-    raw.inputPrice !== undefined && raw.inputPrice !== null && raw.inputPrice !== ""
-      ? normalizePrice(raw.inputPrice)
-      : { ok: false as const, reason: "inputPrice is missing" };
-  if (!inputRes.ok) {
-    errors.push(`pricing.inputPrice: ${inputRes.reason}`);
-    if (raw.inputPrice !== undefined && raw.inputPrice !== null && raw.inputPrice !== "") {
-      unsafeFields.push("pricing.inputPrice"); // present but unparseable
-    } else {
-      missingFields.push("pricing.inputPrice"); // absent
-    }
-  }
-
-  const outputRes =
-    raw.outputPrice !== undefined && raw.outputPrice !== null && raw.outputPrice !== ""
-      ? normalizePrice(raw.outputPrice)
-      : { ok: true as const, value: undefined };
-  if (!outputRes.ok) errors.push(`pricing.outputPrice: ${outputRes.reason}`);
-
-  const dateRes =
-    raw.deprecationDate !== undefined && raw.deprecationDate !== null && raw.deprecationDate !== ""
-      ? normalizeDate(raw.deprecationDate)
-      : { ok: true as const, value: undefined };
-  if (!dateRes.ok) errors.push(`deprecationDate: ${dateRes.reason}`);
-
-  // --- Validate the normalized candidate (packages/core).
-  let schemaValid = false;
-  let candidate: CandidateObservation | null = null;
-
-  if (statusRes.ok && contextRes.ok && inputRes.ok && outputRes.ok && dateRes.ok) {
-    candidate = {
-      provider,
-      modelId,
-      status: statusRes.value,
-      contextWindow: contextRes.value,
-      pricing: {
-        inputPrice: inputRes.value,
-        outputPrice: outputRes.value,
-        currency: "USD",
-        unit: "per_1m_tokens",
-      },
-      deprecationDate: dateRes.value,
-      source: {
-        url: sourceUrl,
-        collectorId,
-        collectorVersion: collectorVersion ?? "",
-        observedAt,
-      },
-      confidence: 0.99,
-    };
-    const validation = validateCandidate(candidate);
-    errors.push(...validation.errors);
-    warnings.push(...validation.warnings);
-    schemaValid = errors.length === 0;
-  }
-
-  const hash = candidate && schemaValid ? semanticHash(candidate as ModelContract) : null;
-
-  // --- Evidence for classifier
+  // --- Evidence for classifier (retry context from orchestration layer)
   const observationEvidence = {
     collectionFailed: false,
-    retryExhausted: false,
+    retryExhausted: context?.retryExhausted ?? false,
     schemaValid,
     unsafeFields,
     missingFields,

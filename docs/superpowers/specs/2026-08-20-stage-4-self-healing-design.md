@@ -10,12 +10,14 @@
 | BROKEN_SELECTOR | `j_mt1jttl022b0w6cqve` | ❌ Only sourceUrl present |
 | BROKEN retry | `j_mt1jucaa2lwkjijz9r` | ❌ Empty row |
 | Pre-heal evidence | `j_mt1l441y477wvqwis` | ❌ All 6 required fields missing |
-| Post-heal (attempt 1) | `j_mt2kfgo7vvrzrbk8e` | ❌ All 6 fields missing — heal not yet performed |
-| Post-heal (attempt 2) | `j_mt2lp3ww174tcil1wk` | ✅ All 6 fields present — heal performed, BROKEN_SELECTOR works |
+| Post-heal BROKEN (attempt 2) | `j_mt2lp3ww174tcil1wk` | ✅ All 6 fields present — heal performed, BROKEN_SELECTOR works |
 | Post-heal BROKEN retest | `j_mt2lujth1o2y9utjoc` | ✅ All 6 fields present — heal persistent for BROKEN_SELECTOR |
-| Post-heal HEALTHY test | `j_mt2ltm8pb2uaz02tr` | ❌ Only sourceUrl — heal broke article-based markup compatibility |
-| Post-heal CHANGED_PRICE | `j_mt2lr7q6o5b184fwq` | ❌ Only sourceUrl — same incompatibility |
-| Post-heal CHANGED_PRICE retest | `j_mt2lsihz2aeq1goof2` | ❌ Only sourceUrl — confirmed |
+| Post-heal HEALTHY regression | `j_mt2ltm8pb2uaz02tr` | ❌ Only sourceUrl — heal broke article-based markup compatibility |
+| Post-heal CHANGED_PRICE regression | `j_mt2lr7q6o5b184fwq` | ❌ Only sourceUrl — same incompatibility |
+| **Collector refactor proof** | | |
+| Refactored BROKEN_SELECTOR | `j_mt2mtnys23ykwmrlh4` | ⚠️ Partial — prices/status present, provider/modelId missing (attribute extraction) |
+| Refactored HEALTHY | `j_mt2mu5663ufen6dry` | ✅ All 6 fields present, schemaValid=true, hash=81ac4862 |
+| Refactored CHANGED_PRICE | `j_mt2muh76dzklvakgk` | ✅ All 6 fields present, schemaValid=true, hash=f3d45ec4, SEMANTIC_DRIFT |
 
 ### Collector
 
@@ -39,9 +41,14 @@
 - Revision exposed: NO
 - Updated timestamp: NOT_EXPOSED via API
 
-**Critical finding:** Self-Heal adapted selectors to BROKEN_SELECTOR's table-based markup, breaking compatibility with article-based markup (HEALTHY/CHANGED_PRICE). The healed collector works ONLY against the markup it was healed for.
+**Critical finding (first repair):** Self-Heal adapted selectors to BROKEN_SELECTOR's table-based markup, breaking compatibility with article-based markup (HEALTHY/CHANGED_PRICE). The healed collector works ONLY against the markup it was healed for.
 
-**Design implication:** The demo must account for this. After BROKEN_SELECTOR → heal → recovery, the demo can only use BROKEN_SELECTOR-compatible variants for the CHANGED_PRICE contrast. Alternatively, the operator must revert the collector selectors to article-based after the BROKEN_SELECTOR demo.
+**Collector refactor proof (second repair):** The collector was refactored to support both layouts. Results:
+- HEALTHY: ✅ All 6 fields present, schemaValid=true, hash=81ac4862
+- CHANGED_PRICE: ✅ All 6 fields present, schemaValid=true, hash=f3d45ec4, SEMANTIC_DRIFT
+- BROKEN_SELECTOR: ⚠️ Partial — prices/status/context present, but `provider` and `modelId` missing because they're stored as HTML attributes (`data-provider`, `data-model`), not text content
+
+**Design implication:** The collector needs to extract attribute values for `provider` and `modelId` in the table-based layout. The owner must update the Bright Data collector in Scraper Studio to extract these attributes. HEALTHY and CHANGED_PRICE work perfectly with the refactored collector.
 
 ## Architecture
 
@@ -216,6 +223,13 @@ function allowedHealthTransition(
 5. **No fake repairs** — Bright Data is the repair tool, ModelContract is the verifier
 6. **Contract preserved** — extraction failure never overwrites last valid contract
 7. **Retry exactly once** — not configurable, not a framework
+8. **Repair regression invariant** — a repair candidate is acceptable only when:
+   a. current broken extraction becomes valid
+   b. schema validation passes
+   c. extraction-only semantics remain unchanged
+   d. deterministic HEALTHY canary remains valid
+
+   This is NOT a generic compatibility/history framework. Only one controlled canary is required.
 
 ## Demo Flow
 

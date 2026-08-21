@@ -7,22 +7,23 @@
 - [x] Bright Data self-heal capability documented (UI-mediated)
 - [x] Owner heals collector in Bright Data Scraper Studio (Self-Heal / AI Fix)
 - [x] Post-heal verification succeeds (`scripts/post-heal-verify.ts` passes)
-- [ ] CHANGED_PRICE contrast resolved (see Finding below)
+- [x] Collector refactored to support both layouts (HEALTHY + CHANGED_PRICE proven)
+- [ ] Owner extracts `provider` and `modelId` attributes in Bright Data collector for BROKEN_SELECTOR
 
-## Critical Finding: Markup Incompatibility
+## Collector Regression Proof (2026-08-21)
 
-The Bright Data Self-Heal adapted the collector selectors to work with BROKEN_SELECTOR's **table-based** markup. This broke compatibility with the **article-based** markup used by HEALTHY and CHANGED_PRICE variants.
+The collector was refactored after the first repair regression. Results:
 
-| Variant | Markup | Healed collector |
-|---------|--------|------------------|
-| BROKEN_SELECTOR | table-based | ✅ Works |
-| HEALTHY | article-based | ❌ Fails |
-| CHANGED_PRICE | article-based | ❌ Fails |
+| Variant | Run ID | Status | provider | modelId | schemaValid | hash |
+|---------|--------|--------|----------|---------|-------------|------|
+| HEALTHY | `j_mt2mu5663ufen6dry` | ✅ | demo-ai | model-x | true | 81ac4862 |
+| CHANGED_PRICE | `j_mt2muh76dzklvakgk` | ✅ | demo-ai | model-x | true | f3d45ec4 |
+| BROKEN_SELECTOR | `j_mt2mtnys23ykwmrlh4` | ⚠️ | (missing) | (missing) | false | null |
 
-**Resolution options:**
-1. Operator reverts collector selectors to article-based (requires another Self-Heal or manual edit)
-2. Create a table-based CHANGED_PRICE variant
-3. Demo Scenario B uses a different approach
+**Remaining issue:** BROKEN_SELECTOR stores `provider` and `modelId` as HTML attributes (`data-provider`, `data-model`), not text content. The collector needs attribute extraction for these fields.
+
+**HEALTHY canary:** ✅ Passes — proves no regression on article-based layout.
+**CHANGED_PRICE:** ✅ Passes — SEMANTIC_DRIFT with correct fieldDiff.
 
 ## TASK 1: Pure Healing Rules + State Machine
 
@@ -72,7 +73,7 @@ The Bright Data Self-Heal adapted the collector selectors to work with BROKEN_SE
    - Valid raw observation → candidate, schemaValid=true
    - Missing required fields → missingFields populated
    - Unsafe values → unsafeFields populated
-   - Collection failed → appropriate response
+   - NOTE: Collection/run failure is NOT handled by prepareObservation — it operates only on actual returned RawObservation. Collection failure belongs to application orchestration and `recordCollectionFailure`.
 
 2. Extract normalization logic from `ingestObservation` into `prepareObservation`.
 
@@ -145,7 +146,8 @@ The Bright Data Self-Heal adapted the collector selectors to work with BROKEN_SE
 
 **TDD:**
 1. Write tests for quarantine flow:
-   - EXTRACTION_DRIFT → create HealAttempt → QUARANTINED
+   - EXTRACTION_DRIFT + RETRY_EXHAUSTED → QUARANTINED → create HealAttempt
+   - EXTRACTION_DRIFT without RETRY_EXHAUSTED → NOT quarantined (retry in progress)
    - healthState transitions correctly
    - HealAttempt persists with correct fields
 

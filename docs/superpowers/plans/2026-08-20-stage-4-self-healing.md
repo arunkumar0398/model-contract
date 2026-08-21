@@ -17,7 +17,7 @@ All three variants pass with a single collector. One collector, two DOM layouts,
 
 | Variant | Run ID | schemaValid | hash | classification |
 |---------|--------|-------------|------|----------------|
-| BROKEN_SELECTOR | `j_mt2ngwat2qox9iaziz` | true | 81ac4862 | EXTRACTION_DRIFT |
+| BROKEN_SELECTOR (repaired) | `j_mt2ngwat2qox9iaziz` | true | 81ac4862 | NO_DRIFT (post-repair valid) |
 | HEALTHY | `j_mt2nh8t81msjn91muw` | true | 81ac4862 | NO_DRIFT |
 | CHANGED_PRICE | `j_mt2nhj5o14uwnb7s55` | true | f3d45ec4 | SEMANTIC_DRIFT |
 

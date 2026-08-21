@@ -19,7 +19,7 @@
 | Refactored HEALTHY | `j_mt2mu5663ufen6dry` | ✅ All 6 fields present, schemaValid=true, hash=81ac4862 |
 | Refactored CHANGED_PRICE | `j_mt2muh76dzklvakgk` | ✅ All 6 fields present, schemaValid=true, hash=f3d45ec4, SEMANTIC_DRIFT |
 | **Final collector proof (2026-08-21)** | | |
-| Final BROKEN_SELECTOR | `j_mt2ngwat2qox9iaziz` | ✅ All 6 fields present, schemaValid=true, hash=81ac4862 |
+| Final BROKEN_SELECTOR (repaired) | `j_mt2ngwat2qox9iaziz` | ✅ All 6 fields present, schemaValid=true, hash=81ac4862 (post-repair, NO_DRIFT) |
 | Final HEALTHY | `j_mt2nh8t81msjn91muw` | ✅ All 6 fields present, schemaValid=true, hash=81ac4862 |
 | Final CHANGED_PRICE | `j_mt2nhj5o14uwnb7s55` | ✅ All 6 fields present, schemaValid=true, hash=f3d45ec4, SEMANTIC_DRIFT |
 
@@ -204,10 +204,11 @@ export type ReasonCode =
   | "BASELINE_ESTABLISHED"
   | "SEMANTIC_HASH_UNCHANGED"
   | "SEMANTIC_FIELD_CHANGED"
-  | "UNSAFE_VALUE"
   | "REQUIRED_FIELD_MISSING"
+  | "UNSAFE_VALUE"
   | "COLLECTION_FAILED"
-  | "RETRY_EXHAUSTED";  // NEW: Stage 4 — retry-once orchestrator exhausted
+  | "EXTRACTION_VALIDATION_FAILED"  // Stage 3 — preserved
+  | "RETRY_EXHAUSTED";              // NEW: Stage 4 — retry-once orchestrator exhausted
 ```
 
 `RETRY_EXHAUSTED` is Stage 4 orchestration evidence, not a new drift type.

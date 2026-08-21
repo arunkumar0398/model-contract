@@ -54,20 +54,17 @@ export function verifyRepairCandidate(
 /**
  * Allowed health-state transitions.
  *
- * Successful path:
- *   HEALTHY → SUSPECT → QUARANTINED → HEALING → AWAITING_APPROVAL → VERIFIED → HEALTHY
+ * Real observable transitions:
+ *   HEALTHY → QUARANTINED  (extraction drift + retry exhausted)
+ *   QUARANTINED → HEALTHY  (repair approved)
+ *   QUARANTINED → FAILED   (repair rejected)
  *
- * Failed paths:
- *   HEALING → FAILED
- *   AWAITING_APPROVAL → FAILED
+ * HEALING, AWAITING_APPROVAL, VERIFIED are UI-mediated states
+ * with no system event — not modeled here.
  */
 const VALID_TRANSITIONS: Record<string, HealthState[]> = {
-  HEALTHY: ["SUSPECT"],
-  SUSPECT: ["QUARANTINED"],
-  QUARANTINED: ["HEALING"],
-  HEALING: ["AWAITING_APPROVAL", "FAILED"],
-  AWAITING_APPROVAL: ["VERIFIED", "FAILED"],
-  VERIFIED: ["HEALTHY"],
+  HEALTHY: ["QUARANTINED"],
+  QUARANTINED: ["HEALTHY", "FAILED"],
   FAILED: [],
 };
 

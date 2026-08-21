@@ -104,14 +104,9 @@ describe("verifyRepairCandidate", () => {
 
 describe("allowedHealthTransition", () => {
   const validTransitions: [HealthState, HealthState][] = [
-    ["HEALTHY", "SUSPECT"],
-    ["SUSPECT", "QUARANTINED"],
-    ["QUARANTINED", "HEALING"],
-    ["HEALING", "AWAITING_APPROVAL"],
-    ["AWAITING_APPROVAL", "VERIFIED"],
-    ["VERIFIED", "HEALTHY"],
-    ["HEALING", "FAILED"],
-    ["AWAITING_APPROVAL", "FAILED"],
+    ["HEALTHY", "QUARANTINED"],
+    ["QUARANTINED", "HEALTHY"],
+    ["QUARANTINED", "FAILED"],
   ];
 
   for (const [from, to] of validTransitions) {
@@ -121,23 +116,12 @@ describe("allowedHealthTransition", () => {
   }
 
   const invalidTransitions: [HealthState, HealthState][] = [
-    ["HEALTHY", "QUARANTINED"],
-    ["HEALTHY", "HEALING"],
-    ["HEALTHY", "VERIFIED"],
-    ["SUSPECT", "HEALTHY"],
-    ["SUSPECT", "HEALING"],
-    ["QUARANTINED", "HEALTHY"],
-    ["QUARANTINED", "VERIFIED"],
-    ["HEALING", "HEALTHY"],
-    ["HEALING", "SUSPECT"],
-    ["AWAITING_APPROVAL", "HEALTHY"],
-    ["AWAITING_APPROVAL", "SUSPECT"],
-    ["VERIFIED", "SUSPECT"],
-    ["VERIFIED", "QUARANTINED"],
+    ["HEALTHY", "HEALTHY"],
+    ["HEALTHY", "FAILED"],
+    ["QUARANTINED", "QUARANTINED"],
     ["FAILED", "HEALTHY"],
-    ["FAILED", "SUSPECT"],
     ["FAILED", "QUARANTINED"],
-    ["FAILED", "HEALING"],
+    ["FAILED", "FAILED"],
   ];
 
   for (const [from, to] of invalidTransitions) {

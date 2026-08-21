@@ -1,4 +1,4 @@
-import { isHealingEligible, verifyRepairCandidate } from "@modelcontract/core";
+import { isHealingEligible, verifyRepairCandidate, allowedHealthTransition } from "@modelcontract/core";
 import type { PrismaClient } from "@modelcontract/db";
 
 /** JSON-safe payload (strips undefined so Prisma Json columns accept it). */
@@ -72,6 +72,13 @@ export async function quarantineExtractionDrift(
   });
 
   if (!eligible) {
+    return { quarantined: false, healAttempt: null };
+  }
+
+  // Verify state transition is allowed
+  const currentModel = await db.model.findUnique({ where: { id: ctx.modelRecordId } });
+  const currentState = (currentModel?.healthState ?? "HEALTHY") as import("@modelcontract/core").HealthState;
+  if (!allowedHealthTransition(currentState, "QUARANTINED")) {
     return { quarantined: false, healAttempt: null };
   }
 
@@ -163,6 +170,14 @@ export async function verifyRepairCandidateAndApprove(
 
   const approved = candidateSchemaValid && semanticMatch;
 
+  // Verify state transition is allowed
+  const currentModel = await db.model.findUnique({ where: { id: modelRecordId } });
+  const currentState = (currentModel?.healthState ?? "QUARANTINED") as import("@modelcontract/core").HealthState;
+  const targetState = approved ? "HEALTHY" : "FAILED";
+  if (!allowedHealthTransition(currentState, targetState)) {
+    throw new Error(`Invalid health transition: ${currentState} → ${targetState}`);
+  }
+
   await db.$transaction(async (tx) => {
     // Update HealAttempt
     await tx.healAttempt.update({
@@ -184,10 +199,9 @@ export async function verifyRepairCandidateAndApprove(
     });
 
     // Update health state
-    const newHealthState = approved ? "HEALTHY" : "FAILED";
     await tx.model.update({
       where: { id: modelRecordId },
-      data: { healthState: newHealthState },
+      data: { healthState: targetState },
     });
   });
 
@@ -212,6 +226,13 @@ export async function rejectRepair(
   db: HealingDb,
   input: RejectRepairInput,
 ): Promise<RejectRepairResult> {
+  // Verify state transition is allowed
+  const currentModel = await db.model.findUnique({ where: { id: input.modelRecordId } });
+  const currentState = (currentModel?.healthState ?? "QUARANTINED") as import("@modelcontract/core").HealthState;
+  if (!allowedHealthTransition(currentState, "FAILED")) {
+    throw new Error(`Invalid health transition: ${currentState} → FAILED`);
+  }
+
   await db.$transaction(async (tx) => {
     await tx.healAttempt.update({
       where: { id: input.healAttemptId },

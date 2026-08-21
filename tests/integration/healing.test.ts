@@ -575,7 +575,7 @@ describe("rejectRepair", () => {
 
     await db.model.update({
       where: { providerId_modelId: { providerId: provider.id, modelId: "model-x" } },
-      data: { healthState: "AWAITING_APPROVAL" },
+      data: { healthState: "QUARANTINED" },
     });
 
     const driftEvent = await db.driftEvent.create({

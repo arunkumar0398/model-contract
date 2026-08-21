@@ -1,5 +1,6 @@
-import type { DriftType, ReasonCode } from "./drift";
-import type { HealthState } from "./drift";
+import type { DriftType, ReasonCode, HealthState } from "./drift";
+
+export type { HealthState } from "./drift";
 
 /**
  * Type guard: is the given string a valid ReasonCode?

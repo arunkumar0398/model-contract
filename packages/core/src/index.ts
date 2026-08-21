@@ -6,3 +6,4 @@ export * from "./validate";
 export * from "./semantic-diff";
 export * from "./classify-drift";
 export * from "./healing";
+export * from "./prepare";

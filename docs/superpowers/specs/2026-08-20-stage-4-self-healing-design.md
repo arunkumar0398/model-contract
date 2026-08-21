@@ -10,7 +10,12 @@
 | BROKEN_SELECTOR | `j_mt1jttl022b0w6cqve` | ❌ Only sourceUrl present |
 | BROKEN retry | `j_mt1jucaa2lwkjijz9r` | ❌ Empty row |
 | Pre-heal evidence | `j_mt1l441y477wvqwis` | ❌ All 6 required fields missing |
-| Post-heal (attempt 1) | `j_mt2kfgo7vvrzrbk8e` | ❌ All 6 fields missing — heal NOT yet performed |
+| Post-heal (attempt 1) | `j_mt2kfgo7vvrzrbk8e` | ❌ All 6 fields missing — heal not yet performed |
+| Post-heal (attempt 2) | `j_mt2lp3ww174tcil1wk` | ✅ All 6 fields present — heal performed, BROKEN_SELECTOR works |
+| Post-heal BROKEN retest | `j_mt2lujth1o2y9utjoc` | ✅ All 6 fields present — heal persistent for BROKEN_SELECTOR |
+| Post-heal HEALTHY test | `j_mt2ltm8pb2uaz02tr` | ❌ Only sourceUrl — heal broke article-based markup compatibility |
+| Post-heal CHANGED_PRICE | `j_mt2lr7q6o5b184fwq` | ❌ Only sourceUrl — same incompatibility |
+| Post-heal CHANGED_PRICE retest | `j_mt2lsihz2aeq1goof2` | ❌ Only sourceUrl — confirmed |
 
 ### Collector
 
@@ -34,7 +39,9 @@
 - Revision exposed: NO
 - Updated timestamp: NOT_EXPOSED via API
 
-**Design implication:** ModelContract detects + quarantines + verifies. Bright Data repairs via UI. ModelContract re-runs the same collector after repair.
+**Critical finding:** Self-Heal adapted selectors to BROKEN_SELECTOR's table-based markup, breaking compatibility with article-based markup (HEALTHY/CHANGED_PRICE). The healed collector works ONLY against the markup it was healed for.
+
+**Design implication:** The demo must account for this. After BROKEN_SELECTOR → heal → recovery, the demo can only use BROKEN_SELECTOR-compatible variants for the CHANGED_PRICE contrast. Alternatively, the operator must revert the collector selectors to article-based after the BROKEN_SELECTOR demo.
 
 ## Architecture
 
@@ -227,14 +234,26 @@ function allowedHealthTransition(
 
 ### Scenario B: Semantic Drift → No Heal
 
+**Option 1 (preferred — requires collector revert):**
 1. HEALTHY baseline established
-2. Switch to CHANGED_PRICE ($6 input)
-3. Real Bright Data run succeeds (valid extraction)
-4. SEMANTIC_DRIFT classified (pricing.inputPrice 4 → 6)
+2. Operator reverts Bright Data collector selectors to article-based
+3. Switch to CHANGED_PRICE ($6 input)
+4. Real Bright Data run succeeds (valid extraction)
+5. SEMANTIC_DRIFT classified (pricing.inputPrice 4 → 6)
+6. ZERO heal attempts
+7. No quarantine
+8. Contract updated with $6
+9. Distinction proven: we repair broken extraction, not real facts
+
+**Option 2 (no revert — collector stays table-based):**
+1. BROKEN_SELECTOR healed → collector works with table-based
+2. Switch to a table-based CHANGED_PRICE variant (would need to be created)
+3. Real Bright Data run succeeds (valid extraction, $6 price)
+4. SEMANTIC_DRIFT classified
 5. ZERO heal attempts
-6. No quarantine
-7. Contract updated with $6
-8. Distinction proven: we repair broken extraction, not real facts
+6. Distinction proven
+
+**Note:** The current CHANGED_PRICE variant uses article-based markup, which is incompatible with the healed (table-based) collector. The demo operator must choose one of these options.
 
 ## Failed Repair Case
 

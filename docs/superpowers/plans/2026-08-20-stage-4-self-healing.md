@@ -5,8 +5,24 @@
 - [x] Stage 3 complete (drift classification proven)
 - [x] Real Bright Data break proven (BROKEN_SELECTOR)
 - [x] Bright Data self-heal capability documented (UI-mediated)
-- [ ] Owner heals collector in Bright Data Scraper Studio (Self-Heal / AI Fix)
-- [ ] Post-heal verification succeeds (`scripts/post-heal-verify.ts` passes)
+- [x] Owner heals collector in Bright Data Scraper Studio (Self-Heal / AI Fix)
+- [x] Post-heal verification succeeds (`scripts/post-heal-verify.ts` passes)
+- [ ] CHANGED_PRICE contrast resolved (see Finding below)
+
+## Critical Finding: Markup Incompatibility
+
+The Bright Data Self-Heal adapted the collector selectors to work with BROKEN_SELECTOR's **table-based** markup. This broke compatibility with the **article-based** markup used by HEALTHY and CHANGED_PRICE variants.
+
+| Variant | Markup | Healed collector |
+|---------|--------|------------------|
+| BROKEN_SELECTOR | table-based | ✅ Works |
+| HEALTHY | article-based | ❌ Fails |
+| CHANGED_PRICE | article-based | ❌ Fails |
+
+**Resolution options:**
+1. Operator reverts collector selectors to article-based (requires another Self-Heal or manual edit)
+2. Create a table-based CHANGED_PRICE variant
+3. Demo Scenario B uses a different approach
 
 ## TASK 1: Pure Healing Rules + State Machine
 

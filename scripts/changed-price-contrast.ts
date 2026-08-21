@@ -10,9 +10,9 @@
  */
 import { readFileSync } from "fs";
 // Load .env manually (dotenv not available in scripts/)
-const envLines = readFileSync(".env", "utf8").split("\n");
-for (const line of envLines) {
-  const match = line.match(/^(?!#)([A-Z_][A-Z0-9_]*)=(.*)$/);
+const envContent = readFileSync(".env", "utf8");
+for (const line of envContent.split(/\r?\n/)) {
+  const match = line.match(/^([A-Z_][A-Z0-9_]*)=(.*)/);
   if (match && !process.env[match[1]]) process.env[match[1]] = match[2];
 }
 import { runCollectorAndWait } from "@modelcontract/brightdata";

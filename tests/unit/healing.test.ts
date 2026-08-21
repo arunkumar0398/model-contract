@@ -6,7 +6,6 @@ import {
   isReasonCode,
   type HealthState,
 } from "../../packages/core/src/healing";
-import type { DriftType, ReasonCode } from "../../packages/core/src/drift";
 
 describe("RETRY_EXHAUSTED reason code", () => {
   it("RETRY_EXHAUSTED is a valid ReasonCode", () => {

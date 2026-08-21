@@ -20,6 +20,7 @@ export function createFakeDb() {
   const demoStates = new Map<string, Json>();
   const observations: Json[] = [];
   const driftEvents: Json[] = [];
+  const healAttempts: Json[] = [];
 
   const db = {
     provider: {
@@ -41,9 +42,32 @@ export function createFakeDb() {
           const key = `${args.where.providerId_modelId.providerId}:${args.where.providerId_modelId.modelId}`;
           const existing = models.get(key);
           if (existing) return { ...existing, ...args.update };
-          const row = { id: nextId(), createdAt: new Date(), ...args.create };
+          const row = { id: nextId(), createdAt: new Date(), healthState: "HEALTHY", ...args.create };
           models.set(key, row);
           return row;
+        },
+      ),
+      findMany: vi.fn(async () => [...models.values()]),
+      update: vi.fn(
+        async (args: {
+          where: { id: string } | { providerId_modelId: { providerId: string; modelId: string } };
+          data: Json;
+        }) => {
+          let key: string | undefined;
+          const w = args.where as Record<string, unknown>;
+          if (typeof w.id === "string") {
+            for (const [k, v] of models) {
+              if (v.id === w.id) { key = k; break; }
+            }
+          } else if (w.providerId_modelId) {
+            const pm = w.providerId_modelId as { providerId: string; modelId: string };
+            key = `${pm.providerId}:${pm.modelId}`;
+          }
+          if (!key || !models.has(key)) throw new Error("Model not found");
+          const existing = models.get(key)!;
+          const updated = { ...existing, ...args.data };
+          models.set(key, updated);
+          return updated;
         },
       ),
     },
@@ -106,6 +130,33 @@ export function createFakeDb() {
         return null;
       }),
     },
+    healAttempt: {
+      create: vi.fn(async (args: { data: Json }) => {
+        const row = { id: nextId(), createdAt: new Date(), ...args.data };
+        healAttempts.push(row);
+        return row;
+      }),
+      findMany: vi.fn(async (args?: { where?: Json }) => {
+        if (!args?.where) return [...healAttempts];
+        return healAttempts.filter((h) => {
+          const w = args.where as Record<string, unknown>;
+          if (w.modelRecordId && h.modelRecordId !== w.modelRecordId) return false;
+          if (w.driftEventId && h.driftEventId !== w.driftEventId) return false;
+          if (w.status && h.status !== w.status) return false;
+          return true;
+        });
+      }),
+      findUnique: vi.fn(async (args: { where: { id: string } }) => {
+        for (const h of healAttempts) if (h.id === args.where.id) return h;
+        return null;
+      }),
+      update: vi.fn(async (args: { where: { id: string }; data: Json }) => {
+        const idx = healAttempts.findIndex((h) => h.id === args.where.id);
+        if (idx === -1) throw new Error(`HealAttempt ${args.where.id} not found`);
+        healAttempts[idx] = { ...healAttempts[idx], ...args.data };
+        return healAttempts[idx];
+      }),
+    },
     demoState: {
       upsert: vi.fn(async (args: { where: { id: string }; create: Json; update: Json }) => {
         const existing = demoStates.get(args.where.id);
@@ -123,18 +174,24 @@ export function createFakeDb() {
     $transaction: vi.fn(async (fn: (tx: typeof db) => Promise<unknown>) => {
       // Snapshot mutable stores before callback
       const snapObs = [...observations];
+      const snapModels = new Map(models);
       const snapContracts = new Map(contracts);
       const snapDrift = [...driftEvents];
+      const snapHeal = [...healAttempts];
       try {
         return await fn(db);
       } catch (err) {
         // Restore on failure — simulates transaction rollback
         observations.length = 0;
         observations.push(...snapObs);
+        models.clear();
+        for (const [k, v] of snapModels) models.set(k, v);
         contracts.clear();
         for (const [k, v] of snapContracts) contracts.set(k, v);
         driftEvents.length = 0;
         driftEvents.push(...snapDrift);
+        healAttempts.length = 0;
+        healAttempts.push(...snapHeal);
         throw err;
       }
     }),
@@ -146,6 +203,7 @@ export function createFakeDb() {
     __observations: observations,
     __contracts: contracts,
     __driftEvents: driftEvents,
+    __healAttempts: healAttempts,
   } as unknown as FakeDb;
 }
 
@@ -153,6 +211,7 @@ export type FakeDb = PrismaClient & {
   __observations: Json[];
   __contracts: Map<string, Json>;
   __driftEvents: Json[];
+  __healAttempts: Json[];
 };
 
 export type { PrismaClient };

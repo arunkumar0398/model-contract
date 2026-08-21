@@ -21,15 +21,17 @@ model Provider {
 }
 
 model Model {
-  id          String        @id @default(cuid())
-  providerId  String
-  modelId     String
-  displayName String?
-  createdAt   DateTime      @default(now())
-  provider    Provider      @relation(fields: [providerId], references: [id], onDelete: Cascade)
-  contracts   Contract[]
+  id           String        @id @default(cuid())
+  providerId   String
+  modelId      String
+  displayName  String?
+  healthState  String        @default("HEALTHY")
+  createdAt    DateTime      @default(now())
+  provider     Provider      @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  contracts    Contract[]
   observations Observation[]
   driftEvents  DriftEvent[]
+  healAttempts HealAttempt[]
 
   @@unique([providerId, modelId])
 }
@@ -37,29 +39,29 @@ model Model {
 // One "current contract" row per model; updated on every schema-valid
 // observation. History lives in Observation rows.
 model Contract {
-  id               String   @id @default(cuid())
-  modelId          String
-  status           String
-  contextWindow    Int?
-  inputPrice       Float?
-  outputPrice      Float?
-  currency         String   @default("USD")
-  pricingUnit      String   @default("per_1m_tokens")
-  deprecationDate  String?
-  semanticHash     String
-  sourceUrl        String
-  collectorId      String
-  collectorVersion String
-  observedAt       String
-  createdAt        DateTime @default(now())
-  model            Model    @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  id                  String       @id @default(cuid())
+  modelId             String
+  status              String
+  contextWindow       Int?
+  inputPrice          Float?
+  outputPrice         Float?
+  currency            String       @default("USD")
+  pricingUnit         String       @default("per_1m_tokens")
+  deprecationDate     String?
+  semanticHash        String
+  sourceUrl           String
+  collectorId         String
+  collectorVersion    String
+  observedAt          String
+  createdAt           DateTime     @default(now())
+  model               Model        @relation(fields: [modelId], references: [id], onDelete: Cascade)
   previousDriftEvents DriftEvent[] @relation("PreviousContractDriftEvents")
 
   @@unique([modelId])
 }
 
 model Observation {
-  id                 String   @id @default(cuid())
+  id                 String      @id @default(cuid())
   modelId            String
   rawPayload         Json
   normalizedPayload  Json?
@@ -72,8 +74,8 @@ model Observation {
   runId              String?
   sourceUrl          String
   observedAt         String
-  createdAt          DateTime @default(now())
-  model              Model    @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  createdAt          DateTime    @default(now())
+  model              Model       @relation(fields: [modelId], references: [id], onDelete: Cascade)
   driftEvent         DriftEvent?
 }
 
@@ -91,26 +93,58 @@ model CollectorVersion {
 // Singleton row (id = "singleton") holding the controlled provider's current
 // demo variant, so /provider-demo/model-x mutates under a stable URL.
 model DriftEvent {
-  id                  String     @id @default(cuid())
-  modelRecordId       String
-  observationId       String?
-  previousContractId  String?
-  driftType           String
-  reasonCodes         Json
-  explanations        Json
-  fieldDiffs          Json
-  previousHash        String?
-  currentHash         String?
-  createdAt           DateTime   @default(now())
+  id                 String   @id @default(cuid())
+  modelRecordId      String
+  observationId      String?
+  previousContractId String?
+  driftType          String
+  reasonCodes        Json
+  explanations       Json
+  fieldDiffs         Json
+  previousHash       String?
+  currentHash        String?
+  createdAt          DateTime @default(now())
 
-  model               Model       @relation(fields: [modelRecordId], references: [id], onDelete: Cascade)
-  observation         Observation? @relation(fields: [observationId], references: [id], onDelete: SetNull)
-  previousContract    Contract?   @relation("PreviousContractDriftEvents", fields: [previousContractId], references: [id], onDelete: SetNull)
+  model            Model         @relation(fields: [modelRecordId], references: [id], onDelete: Cascade)
+  observation      Observation?  @relation(fields: [observationId], references: [id], onDelete: SetNull)
+  previousContract Contract?     @relation("PreviousContractDriftEvents", fields: [previousContractId], references: [id], onDelete: SetNull)
+  healAttempts     HealAttempt[]
 
+  @@unique([observationId])
   @@index([modelRecordId])
   @@index([driftType])
   @@index([createdAt])
-  @@unique([observationId])
+}
+
+model HealAttempt {
+  id            String @id @default(cuid())
+  driftEventId  String
+  modelRecordId String
+
+  // Previous state (from last HEALTHY contract)
+  previousCollectorId String?
+  previousHash        String?
+
+  // Candidate repair evidence (real Bright Data data)
+  candidateRunId       String?
+  candidateOutput      Json?
+  candidateHash        String?
+  candidateSchemaValid Boolean?
+  semanticMatch        Boolean?
+
+  // Status
+  status        String  @default("pending")
+  failureReason String?
+
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  driftEvent DriftEvent @relation(fields: [driftEventId], references: [id], onDelete: Cascade)
+  model      Model      @relation(fields: [modelRecordId], references: [id], onDelete: Cascade)
+
+  @@index([driftEventId])
+  @@index([modelRecordId])
+  @@index([status])
 }
 
 model DemoState {

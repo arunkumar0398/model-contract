@@ -122,17 +122,12 @@ Both `ingestObservation` and the retry orchestrator use this same function.
 
 ## State Machine
 
-### Successful Path
+### Real Observable Transitions
 
 ```
-HEALTHY → SUSPECT → QUARANTINED → HEALING → AWAITING_APPROVAL → VERIFIED → HEALTHY
-```
-
-### Failed Path
-
-```
-HEALING → FAILED
-AWAITING_APPROVAL → FAILED
+HEALTHY → QUARANTINED (extraction drift + retry exhausted)
+QUARANTINED → HEALTHY (repair approved)
+QUARANTINED → FAILED (repair rejected)
 ```
 
 ### State Definitions
@@ -140,12 +135,12 @@ AWAITING_APPROVAL → FAILED
 | State | Meaning |
 |-------|---------|
 | HEALTHY | Last extraction successful, contract is valid |
-| SUSPECT | Initial extraction failure / retry in progress |
 | QUARANTINED | Retry exhausted, persistent EXTRACTION_DRIFT |
-| HEALING | Operator is repairing collector in Bright Data |
-| AWAITING_APPROVAL | Post-heal run is schema-valid AND semantic verification passed |
-| VERIFIED | Repair approved |
 | FAILED | Repair rejected (semantic mismatch) or repair invalid |
+
+### Dead States (removed from implementation)
+
+HEALING, AWAITING_APPROVAL, VERIFIED, SUSPECT are defined in the type union but have no system events to trigger transitions. Bright Data repair is UI-mediated — no webhook/event marks the exact moment repair begins or completes. These states were architecture theatre and have been removed from the state machine.
 
 ### Storage
 
@@ -282,7 +277,8 @@ function allowedHealthTransition(
 5. **No fake repairs** — Bright Data is the repair tool, ModelContract is the verifier
 6. **Contract preserved** — extraction failure never overwrites last valid contract
 7. **Retry exactly once** — not configurable, not a framework
-8. **Repair regression invariant** — a repair candidate is acceptable only when:
+8. **State machine honest** — only HEALTHY, QUARANTINED, FAILED are real observable states. No dead states.
+9. **Repair regression invariant** — a repair candidate is acceptable only when:
    a. current broken extraction becomes valid
    b. schema validation passes
    c. extraction-only semantics remain unchanged

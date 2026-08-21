@@ -8,31 +8,34 @@
 - [x] Owner heals collector in Bright Data Scraper Studio (Self-Heal / AI Fix)
 - [x] Post-heal verification succeeds (`scripts/post-heal-verify.ts` passes)
 - [x] Collector refactored to support both layouts (HEALTHY + CHANGED_PRICE proven)
-- [ ] Owner extracts `provider` and `modelId` attributes in Bright Data collector for BROKEN_SELECTOR
+- [x] Owner extracts `provider` and `modelId` attributes in Bright Data collector for BROKEN_SELECTOR
+- [x] Final 3-variant matrix passes (all variants extract all 6 fields)
 
-## Collector Regression Proof (2026-08-21)
+## Final Collector Proof (2026-08-21)
 
-The collector was refactored after the first repair regression. Results:
+All three variants pass with a single collector. One collector, two DOM layouts, one provider URL.
 
-| Variant | Run ID | Status | provider | modelId | schemaValid | hash |
-|---------|--------|--------|----------|---------|-------------|------|
-| HEALTHY | `j_mt2mu5663ufen6dry` | ✅ | demo-ai | model-x | true | 81ac4862 |
-| CHANGED_PRICE | `j_mt2muh76dzklvakgk` | ✅ | demo-ai | model-x | true | f3d45ec4 |
-| BROKEN_SELECTOR | `j_mt2mtnys23ykwmrlh4` | ⚠️ | (missing) | (missing) | false | null |
+| Variant | Run ID | schemaValid | hash | classification |
+|---------|--------|-------------|------|----------------|
+| BROKEN_SELECTOR | `j_mt2ngwat2qox9iaziz` | true | 81ac4862 | EXTRACTION_DRIFT |
+| HEALTHY | `j_mt2nh8t81msjn91muw` | true | 81ac4862 | NO_DRIFT |
+| CHANGED_PRICE | `j_mt2nhj5o14uwnb7s55` | true | f3d45ec4 | SEMANTIC_DRIFT |
 
-**Remaining issue:** BROKEN_SELECTOR stores `provider` and `modelId` as HTML attributes (`data-provider`, `data-model`), not text content. The collector needs attribute extraction for these fields.
+No collector swaps. No collector reverts. No table-based CHANGED_PRICE variant needed.
 
-**HEALTHY canary:** ✅ Passes — proves no regression on article-based layout.
-**CHANGED_PRICE:** ✅ Passes — SEMANTIC_DRIFT with correct fieldDiff.
-
-## TASK 1: Pure Healing Rules + State Machine
+## TASK 1: Typed RETRY_EXHAUSTED + Pure Healing Rules + State Machine
 
 **Files:**
+- `packages/core/src/drift.ts` (modify — add RETRY_EXHAUSTED to ReasonCode union)
 - `packages/core/src/healing.ts` (new)
 - `tests/unit/healing.test.ts` (new)
 
 **TDD:**
-1. Write tests for `isHealingEligible()`:
+1. Write tests for RETRY_EXHAUSTED type:
+   - RETRY_EXHAUSTED exists in ReasonCode union
+   - isReasonCode("RETRY_EXHAUSTED") returns true
+
+2. Write tests for `isHealingEligible()`:
    - EXTRACTION_DRIFT + RETRY_EXHAUSTED → true
    - EXTRACTION_DRIFT without RETRY_EXHAUSTED → false
    - SEMANTIC_DRIFT → false
@@ -40,11 +43,11 @@ The collector was refactored after the first repair regression. Results:
    - NO_DRIFT → false
    - TRANSIENT_FAILURE → false
 
-2. Write tests for `verifyRepairCandidate()`:
+3. Write tests for `verifyRepairCandidate()`:
    - matching hashes → true
    - different hashes → false
 
-3. Write tests for `allowedHealthTransition()`:
+4. Write tests for `allowedHealthTransition()`:
    - HEALTHY → SUSPECT ✓
    - SUSPECT → QUARANTINED ✓
    - QUARANTINED → HEALING ✓
@@ -55,7 +58,7 @@ The collector was refactored after the first repair regression. Results:
    - AWAITING_APPROVAL → FAILED ✓
    - Invalid transitions → false
 
-4. Implement pure functions.
+5. Implement pure functions.
 
 **Exit:** All unit tests pass. No DB, no fetch, no Bright Data.
 
@@ -116,25 +119,36 @@ The collector was refactored after the first repair regression. Results:
 
 ---
 
-## TASK 5: Retry-Once Collection Orchestrator
+## TASK 5: Retry-Once Collection Orchestrator + Retry Context
 
 **Files:**
 - `apps/web/lib/collection.ts` (new)
 - `tests/integration/collection-retry.test.ts` (new)
+- `apps/web/lib/ingest.ts` (modify — add optional IngestContext)
 
 **TDD:**
 1. Write tests for `collectWithRetry()`:
-   - First run valid → ingest, no retry
-   - First run invalid → retry once → valid → ingest
-   - First run invalid → retry once → invalid → EXTRACTION_DRIFT
-   - First run invalid → retry once → valid but different semantics → classify
+   - **A.** First run valid → ingest, no retry, retryExhausted=false
+   - **B.** First run invalid → retry once → valid → ingest, no quarantine, no healing
+   - **C.** First run invalid → retry once → invalid → final ingestion receives retryExhausted=true → EXTRACTION_DRIFT + RETRY_EXHAUSTED
+   - **D.** Collection/network failure → existing recordCollectionFailure path (do NOT fake RawObservation)
 
-2. Implement orchestrator using:
+2. Add optional `IngestContext` to `ingestObservation()`:
+   ```typescript
+   export type IngestContext = { retryExhausted?: boolean };
+   export async function ingestObservation(db, raw, context?: IngestContext): Promise<IngestResult>
+   ```
+   - Stage 2/3 callers remain unchanged (context defaults to `{}`)
+   - Stage 4 orchestrator passes `{ retryExhausted: true }` ONLY for final failed extraction
+
+3. Implement orchestrator using:
    - `runCollectorAndWait()` from Bright Data
    - `prepareObservation()` from Task 2
    - `ingestObservation()` for persistence
 
-**Exit:** Retry-once works. No generic retry library.
+4. Verify existing tests still pass (no regression).
+
+**Exit:** Retry-once works. Retry context flows through one coherent classification path. No generic retry library.
 
 ---
 
@@ -146,10 +160,11 @@ The collector was refactored after the first repair regression. Results:
 
 **TDD:**
 1. Write tests for quarantine flow:
-   - EXTRACTION_DRIFT + RETRY_EXHAUSTED → QUARANTINED → create HealAttempt
+   - EXTRACTION_DRIFT + RETRY_EXHAUSTED → SUSPECT → QUARANTINED → create HealAttempt
    - EXTRACTION_DRIFT without RETRY_EXHAUSTED → NOT quarantined (retry in progress)
    - healthState transitions correctly
    - HealAttempt persists with correct fields
+   - Single extraction failure does NOT create HealAttempt
 
 2. Write tests for post-heal verification:
    - Valid candidate → semantic match → approve
@@ -172,14 +187,16 @@ The collector was refactored after the first repair regression. Results:
 1. Write tests for approve flow:
    - HealAttempt status → approved
    - healthState → VERIFIED → HEALTHY
-   - Contract updated with new extraction
+   - Provenance updated (candidate run ID, observedAt)
+   - Semantic contract values preserved (not mutated)
+   - This is NOT a semantic contract mutation — it's provenance-safe health restoration
 
 2. Write tests for reject flow:
    - HealAttempt status → rejected
    - healthState → FAILED
    - Contract remains previous valid
 
-**Exit:** Full approve/reject cycle works.
+**Exit:** Full approve/reject cycle works. Extraction repair preserves semantic contract.
 
 ---
 
@@ -237,6 +254,14 @@ The collector was refactored after the first repair regression. Results:
 - Post-heal verification script (`scripts/post-heal-verify.ts`) passes
 - NO simulation allowed — all evidence must be real Bright Data j_ runs
 
+**3x Reset Procedure (documented):**
+1. Pass 1: Set BROKEN_SELECTOR → break → retry → quarantine → heal → recover → HEALTHY
+2. Pass 2 reset: Operator manually reverts collector selectors in Scraper Studio to BROKEN state → repeat cycle
+3. Pass 3 reset: Same procedure as Pass 2
+4. What proves break before each heal: real Bright Data run returns rows with missing/empty required fields, schemaValid=false
+
+If no reproducible reset exists: report `STAGE4_3X_REAL_RESET_BLOCKED` and propose honest gate adjustment for explicit approval.
+
 **TDD:**
 1. Run real acceptance against Neon:
    - Set demo HEALTHY → baseline
@@ -245,7 +270,7 @@ The collector was refactored after the first repair regression. Results:
    - Real Bright Data Self-Heal performed in Scraper Studio
    - Real Bright Data run → valid extraction
    - Semantic match → approve → HEALTHY
-   - Repeat 3x consecutively
+   - Repeat 3x consecutively (with documented reset between passes)
 
 2. Apply Stage 4 migration to Neon
 3. Run CHANGED_PRICE contrast:
@@ -254,7 +279,7 @@ The collector was refactored after the first repair regression. Results:
    - HealAttempt count = 0
    - No quarantine, no healing
 
-**Exit:** 3x consecutive demo passes. Stage 4 gate met.
+**Exit:** 3x consecutive demo passes with documented reset. Stage 4 gate met.
 
 ---
 

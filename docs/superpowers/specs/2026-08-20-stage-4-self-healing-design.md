@@ -18,6 +18,10 @@
 | Refactored BROKEN_SELECTOR | `j_mt2mtnys23ykwmrlh4` | ⚠️ Partial — prices/status present, provider/modelId missing (attribute extraction) |
 | Refactored HEALTHY | `j_mt2mu5663ufen6dry` | ✅ All 6 fields present, schemaValid=true, hash=81ac4862 |
 | Refactored CHANGED_PRICE | `j_mt2muh76dzklvakgk` | ✅ All 6 fields present, schemaValid=true, hash=f3d45ec4, SEMANTIC_DRIFT |
+| **Final collector proof (2026-08-21)** | | |
+| Final BROKEN_SELECTOR | `j_mt2ngwat2qox9iaziz` | ✅ All 6 fields present, schemaValid=true, hash=81ac4862 |
+| Final HEALTHY | `j_mt2nh8t81msjn91muw` | ✅ All 6 fields present, schemaValid=true, hash=81ac4862 |
+| Final CHANGED_PRICE | `j_mt2nhj5o14uwnb7s55` | ✅ All 6 fields present, schemaValid=true, hash=f3d45ec4, SEMANTIC_DRIFT |
 
 ### Collector
 
@@ -43,12 +47,14 @@
 
 **Critical finding (first repair):** Self-Heal adapted selectors to BROKEN_SELECTOR's table-based markup, breaking compatibility with article-based markup (HEALTHY/CHANGED_PRICE). The healed collector works ONLY against the markup it was healed for.
 
-**Collector refactor proof (second repair):** The collector was refactored to support both layouts. Results:
+**Collector refactor proof (second repair):** The collector was refactored to support both layouts. Initial refactor partially worked but missed `provider`/`modelId` attributes. Owner updated collector to extract `data-provider`/`data-model` attributes.
+
+**Final collector proof (2026-08-21):** All three variants pass with a single collector:
+- BROKEN_SELECTOR: ✅ All 6 fields present, schemaValid=true, hash=81ac4862
 - HEALTHY: ✅ All 6 fields present, schemaValid=true, hash=81ac4862
 - CHANGED_PRICE: ✅ All 6 fields present, schemaValid=true, hash=f3d45ec4, SEMANTIC_DRIFT
-- BROKEN_SELECTOR: ⚠️ Partial — prices/status/context present, but `provider` and `modelId` missing because they're stored as HTML attributes (`data-provider`, `data-model`), not text content
 
-**Design implication:** The collector needs to extract attribute values for `provider` and `modelId` in the table-based layout. The owner must update the Bright Data collector in Scraper Studio to extract these attributes. HEALTHY and CHANGED_PRICE work perfectly with the refactored collector.
+**One collector, two DOM layouts, one provider URL.** No collector swaps needed.
 
 ## Architecture
 
@@ -189,12 +195,64 @@ model HealAttempt {
 - `semanticMatch` — computed boolean for quick verification
 - `previousSchemaValid` REMOVED — previous healthy contract is guaranteed valid
 
+## Typed RETRY_EXHAUSTED Reason Code
+
+Stage 4 introduces a typed reason code in `packages/core/src/drift.ts`:
+
+```typescript
+export type ReasonCode =
+  | "BASELINE_ESTABLISHED"
+  | "SEMANTIC_HASH_UNCHANGED"
+  | "SEMANTIC_FIELD_CHANGED"
+  | "UNSAFE_VALUE"
+  | "REQUIRED_FIELD_MISSING"
+  | "COLLECTION_FAILED"
+  | "RETRY_EXHAUSTED";  // NEW: Stage 4 — retry-once orchestrator exhausted
+```
+
+`RETRY_EXHAUSTED` is Stage 4 orchestration evidence, not a new drift type.
+Classifier Stage 3 precedence remains frozen.
+
+## Retry-Context Ingestion Contract
+
+The collection orchestrator passes retry context into the existing ingestion boundary:
+
+```typescript
+// apps/web/lib/ingest.ts
+export type IngestContext = {
+  retryExhausted?: boolean;  // Stage 4: true only after final failed extraction
+};
+
+export async function ingestObservation(
+  db: IngestDb,
+  raw: RawObservation,
+  context?: IngestContext,  // Stage 4: optional retry context
+): Promise<IngestResult> {
+  // ...
+  const observationEvidence = {
+    collectionFailed: false,
+    retryExhausted: context?.retryExhausted ?? false,
+    schemaValid,
+    unsafeFields,
+    missingFields,
+    validationErrors: errors,
+  };
+  // ...
+}
+```
+
+**Invariants:**
+- Stage 2/3 callers remain unchanged (context defaults to `{}`)
+- Stage 4 collection orchestrator passes `{ retryExhausted: true }` ONLY for the final failed extraction after exactly one retry
+- Classification path is NOT duplicated — retry state flows through one coherent classification
+- DriftEvent is written through one coherent classification path, not patched after the fact
+
 ## Pure Core APIs
 
 ```typescript
 // packages/core/src/healing.ts
 
-function isHealingEligible(input: { driftType: DriftType; reasonCodes: string[] }): boolean {
+function isHealingEligible(input: { driftType: DriftType; reasonCodes: ReasonCode[] }): boolean {
   return input.driftType === "EXTRACTION_DRIFT" && input.reasonCodes.includes("RETRY_EXHAUSTED");
 }
 
@@ -248,26 +306,16 @@ function allowedHealthTransition(
 
 ### Scenario B: Semantic Drift → No Heal
 
-**Option 1 (preferred — requires collector revert):**
 1. HEALTHY baseline established
-2. Operator reverts Bright Data collector selectors to article-based
-3. Switch to CHANGED_PRICE ($6 input)
-4. Real Bright Data run succeeds (valid extraction)
-5. SEMANTIC_DRIFT classified (pricing.inputPrice 4 → 6)
-6. ZERO heal attempts
-7. No quarantine
-8. Contract updated with $6
-9. Distinction proven: we repair broken extraction, not real facts
-
-**Option 2 (no revert — collector stays table-based):**
-1. BROKEN_SELECTOR healed → collector works with table-based
-2. Switch to a table-based CHANGED_PRICE variant (would need to be created)
-3. Real Bright Data run succeeds (valid extraction, $6 price)
-4. SEMANTIC_DRIFT classified
+2. Switch to CHANGED_PRICE ($6 input)
+3. Real Bright Data run succeeds (valid extraction)
+4. SEMANTIC_DRIFT classified (pricing.inputPrice 4 → 6)
 5. ZERO heal attempts
-6. Distinction proven
+6. No quarantine
+7. Contract updated with $6
+8. Distinction proven: we repair broken extraction, not real facts
 
-**Note:** The current CHANGED_PRICE variant uses article-based markup, which is incompatible with the healed (table-based) collector. The demo operator must choose one of these options.
+**Note:** The same collector handles both article-based (HEALTHY/CHANGED_PRICE) and table-based (BROKEN_SELECTOR) layouts. No collector swap or revert required between Scenario A and B.
 
 ## Failed Repair Case
 
@@ -282,3 +330,36 @@ semanticMatch = false
 → healthState = FAILED
 → current Contract remains $4
 ```
+
+## 3x Acceptance Reset Procedure
+
+Because Bright Data repairs the collector in-place, each pass requires the collector to be genuinely broken again. The real reset procedure:
+
+### Pass 1
+1. Set demo BROKEN_SELECTOR
+2. Run collector → extraction fails (BROKEN_SELECTOR table markup)
+3. Retry → still fails
+4. QUARANTINED
+5. Operator heals collector in Bright Data Scraper Studio
+6. Run collector → valid extraction
+7. Semantic hash matches → APPROVED → HEALTHY
+
+### Pass 2 Reset
+1. Operator opens Bright Data Scraper Studio
+2. Manually reverts the collector selectors to the BROKEN state
+   (restores the broken CSS selectors that only extract from article-based layout)
+3. Set demo BROKEN_SELECTOR
+4. Run collector → extraction fails again (proof of real break)
+5. Repeat steps 3-7 from Pass 1
+
+### Pass 3 Reset
+1. Same reset procedure as Pass 2
+2. Repeat the full cycle
+
+### What proves the collector is broken before each heal
+- Real Bright Data run returns rows with missing/empty required fields
+- schemaValid = false
+- No provider, no modelId, no prices extracted
+
+### If no reproducible reset exists
+Report `STAGE4_3X_REAL_RESET_BLOCKED` and propose the smallest honest gate adjustment for explicit approval. Do not change the gate silently.

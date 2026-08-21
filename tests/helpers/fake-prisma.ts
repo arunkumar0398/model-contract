@@ -48,6 +48,19 @@ export function createFakeDb() {
         },
       ),
       findMany: vi.fn(async () => [...models.values()]),
+      findUnique: vi.fn(async (args: { where: { id: string } | { providerId_modelId: { providerId: string; modelId: string } } }) => {
+        const w = args.where as Record<string, unknown>;
+        if (typeof w.id === "string") {
+          for (const v of models.values()) {
+            if (v.id === w.id) return v;
+          }
+        } else if (w.providerId_modelId) {
+          const pm = w.providerId_modelId as { providerId: string; modelId: string };
+          const key = `${pm.providerId}:${pm.modelId}`;
+          return models.get(key) ?? null;
+        }
+        return null;
+      }),
       update: vi.fn(
         async (args: {
           where: { id: string } | { providerId_modelId: { providerId: string; modelId: string } };

@@ -15,11 +15,8 @@ export type ReasonCode =
   | "EXTRACTION_VALIDATION_FAILED"
   | "RETRY_EXHAUSTED";
 
+/** Production health states. SUSPECT/HEALING/AWAITING_APPROVAL/VERIFIED removed — unused. */
 export type HealthState =
   | "HEALTHY"
-  | "SUSPECT"
   | "QUARANTINED"
-  | "HEALING"
-  | "AWAITING_APPROVAL"
-  | "VERIFIED"
   | "FAILED";

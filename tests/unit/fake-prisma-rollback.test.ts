@@ -1,71 +1,110 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it } from "vitest";
 import { createFakeDb } from "../helpers/fake-prisma";
 
-describe("fake-prisma $transaction rollback", () => {
-  it("restores state when callback throws", async () => {
+describe("fake-prisma Stage 4 rollback", () => {
+  it("rollback restores healthState and removes HealAttempt on transaction failure", async () => {
     const db = createFakeDb();
 
-    // Seed baseline data
-    await db.provider.upsert({
+    // Setup: create provider and model
+    const provider = await db.provider.upsert({
       where: { slug: "demo-ai" },
-      create: { name: "demo-ai", slug: "demo-ai" },
+      create: { name: "Demo AI", slug: "demo-ai" },
       update: {},
-    });
-    await db.model.upsert({
-      where: { providerId_modelId: { providerId: "p1", modelId: "model-x" } },
-      create: { providerId: "p1", modelId: "model-x", displayName: "model-x" },
-      update: {},
-    });
-    await db.contract.upsert({
-      where: { modelId: "m1" },
-      create: { modelId: "m1", status: "active", inputPrice: 4, semanticHash: "abc", sourceUrl: "u", collectorId: "c1", collectorVersion: "v1", observedAt: "2026-01-01" },
-      update: {},
-    });
-    await db.observation.create({
-      data: { modelId: "m1", rawPayload: {}, schemaValid: true, validationErrors: [], validationWarnings: [], collectorId: "c1", sourceUrl: "u", observedAt: "2026-01-01" },
     });
 
-    // Snapshot counts
-    const obsCount = db.__observations.length;
-    const contractCount = db.__contracts.size;
-    const driftCount = db.__driftEvents.length;
+    const model = await db.model.upsert({
+      where: { providerId_modelId: { providerId: provider.id, modelId: "model-x" } },
+      create: { providerId: provider.id, modelId: "model-x", displayName: "Model X" },
+      update: {},
+    });
 
-    // Force failure inside transaction
+    // Verify initial state
+    expect(model.healthState).toBe("HEALTHY");
+
+    // Inside transaction: change healthState + create HealAttempt
     await expect(
-      db.$transaction(async (tx: any) => {
-        await tx.observation.create({
-          data: { modelId: "m1", rawPayload: {}, schemaValid: false, validationErrors: [], validationWarnings: [], collectorId: "c1", sourceUrl: "u", observedAt: "2026-01-01" },
+      db.$transaction(async (tx) => {
+        // Update health state
+        const updated = await tx.model.update({
+          where: { id: model.id },
+          data: { healthState: "QUARANTINED" },
         });
-        await tx.driftEvent.create({
-          data: { modelRecordId: "m1", driftType: "NO_DRIFT", reasonCodes: [], explanations: [], fieldDiffs: [] },
-        });
-        throw new Error("simulated failure");
-      }),
-    ).rejects.toThrow("simulated failure");
+        expect(updated.healthState).toBe("QUARANTINED");
 
-    // Verify rollback: counts unchanged
-    expect(db.__observations.length).toBe(obsCount);
-    expect(db.__contracts.size).toBe(contractCount);
-    expect(db.__driftEvents.length).toBe(driftCount);
+        // Create heal attempt
+        await tx.healAttempt.create({
+          data: {
+            driftEventId: "fake_drift_1",
+            modelRecordId: model.id,
+            previousHash: "81ac4862",
+            status: "pending",
+          },
+        });
+
+        // Intentional failure
+        throw new Error("Simulated transaction failure");
+      }),
+    ).rejects.toThrow("Simulated transaction failure");
+
+    // After rollback: healthState restored, HealAttempt absent
+    const models = await db.model.findMany();
+    const modelAfter = models.find((m) => m.id === model.id);
+    expect(modelAfter?.healthState).toBe("HEALTHY"); // restored
+
+    const healAttempts = await db.healAttempt.findMany();
+    expect(healAttempts).toHaveLength(0); // removed
+
+    // Existing data unchanged
+    const providers = await db.provider.upsert({
+      where: { slug: "demo-ai" },
+      create: { name: "Demo AI", slug: "demo-ai" },
+      update: {},
+    });
+    expect(providers.id).toBe(provider.id);
   });
 
-  it("supports driftEvent.create inside $transaction", async () => {
+  it("successful transaction persists healthState and HealAttempt", async () => {
     const db = createFakeDb();
-    const result = await db.$transaction(async (tx: any) => {
-      return tx.driftEvent.create({
+
+    const provider = await db.provider.upsert({
+      where: { slug: "anthropic" },
+      create: { name: "Anthropic", slug: "anthropic" },
+      update: {},
+    });
+
+    const model = await db.model.upsert({
+      where: { providerId_modelId: { providerId: provider.id, modelId: "claude-3" } },
+      create: { providerId: provider.id, modelId: "claude-3", displayName: "Claude 3" },
+      update: {},
+    });
+
+    // Successful transaction
+    await db.$transaction(async (tx) => {
+      await tx.model.update({
+        where: { id: model.id },
+        data: { healthState: "QUARANTINED" },
+      });
+
+      await tx.healAttempt.create({
         data: {
-          modelRecordId: "model_1",
-          observationId: "obs_1",
-          driftType: "NO_DRIFT",
-          reasonCodes: ["BASELINE_ESTABLISHED"],
-          explanations: ["first observation"],
-          fieldDiffs: [],
-          createdAt: new Date(),
+          driftEventId: "fake_drift_2",
+          modelRecordId: model.id,
+          previousHash: "abc123",
+          status: "pending",
         },
       });
     });
-    expect((result as any).id).toBeTruthy();
-    expect((result as any).driftType).toBe("NO_DRIFT");
+
+    // Verify persisted state
+    const models = await db.model.findMany();
+    const modelAfter = models.find((m) => m.id === model.id);
+    expect(modelAfter?.healthState).toBe("QUARANTINED");
+
+    const healAttempts = await db.healAttempt.findMany();
+    expect(healAttempts).toHaveLength(1);
+    const first = healAttempts[0];
+    expect(first).toBeDefined();
+    expect(first!.status).toBe("pending");
+    expect(first!.previousHash).toBe("abc123");
   });
 });

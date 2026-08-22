@@ -12,13 +12,11 @@ export type ReasonCode =
   | "REQUIRED_FIELD_MISSING"
   | "UNSAFE_VALUE"
   | "COLLECTION_FAILED"
-  | "EXTRACTION_VALIDATION_FAILED";
+  | "EXTRACTION_VALIDATION_FAILED"
+  | "RETRY_EXHAUSTED";
 
+/** Production health states. SUSPECT/HEALING/AWAITING_APPROVAL/VERIFIED removed — unused. */
 export type HealthState =
   | "HEALTHY"
-  | "SUSPECT"
   | "QUARANTINED"
-  | "HEALING"
-  | "AWAITING_APPROVAL"
-  | "VERIFIED"
   | "FAILED";

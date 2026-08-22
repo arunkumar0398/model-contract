@@ -403,6 +403,26 @@ After every stage: focused tests, full tests, typecheck, lint, production
 build, git diff review, strict self-review, report acceptance-gate evidence,
 then stop. Never claim a stage complete without demonstrating its gate.
 
+## Required Project Decision Lenses
+
+For every remaining ModelContract stage, implementation plan, code review,
+acceptance gate, demo decision, and submission decision, read and apply:
+
+- `skills/harkirat-100xdevs-engineering/SKILL.md`
+- `skills/satyam-hackathon-winning/SKILL.md`
+
+Neither lens overrides the locked project invariants in this file.
+
+When they differ:
+
+- Harkirat lens protects engineering credibility.
+- Satyam lens protects hackathon focus and judging impact.
+
+A proposed action should normally satisfy BOTH.
+
+If the lenses conflict materially, stop and report the trade-off rather than
+silently choosing one.
+
 ## 19. Mandatory test matrix (before release candidate)
 
 ```text

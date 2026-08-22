@@ -81,7 +81,7 @@ describe("semantic drift never triggers healing", () => {
     // No quarantine — model stays HEALTHY
     const modelsList = await db.model.findMany();
     expect(modelsList.length).toBe(1);
-    expect(modelsList[0].healthState).toBe("HEALTHY");
+    expect(modelsList[0]!.healthState).toBe("HEALTHY");
   });
 
   it("DEPRECATED: semantic drift, no healing, no quarantine", async () => {
@@ -119,6 +119,7 @@ describe("semantic drift never triggers healing", () => {
 
     // No quarantine — model stays HEALTHY
     const modelsList = await db.model.findMany();
-    expect(modelsList[0].healthState).toBe("HEALTHY");
+    expect(modelsList.length).toBe(1);
+    expect(modelsList[0]!.healthState).toBe("HEALTHY");
   });
 });
